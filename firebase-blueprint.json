@@ -1,0 +1,173 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Pelatih atau fisioterapis pengguna aplikasi",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "Email pengguna" },
+        "displayName": { "type": "string", "maxLength": 100, "description": "Nama tampilan" },
+        "role": { "type": "string", "enum": ["coach", "physio", "admin"], "description": "Peran pengguna" },
+        "createdAt": { "type": "string", "description": "ISO timestamp pembuatan" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Athlete": {
+      "title": "Athlete",
+      "description": "Profil atlet dalam sistem pemantauan",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 100, "description": "Nama lengkap atlet" },
+        "sport": { "type": "string", "maxLength": 50, "description": "Cabang olahraga" },
+        "position": { "type": "string", "maxLength": 50, "description": "Posisi / spesialisasi" },
+        "age": { "type": "number", "description": "Usia atlet" },
+        "weight": { "type": "number", "description": "Berat badan dalam kg" },
+        "height": { "type": "number", "description": "Tinggi badan dalam cm" },
+        "restingHeartRate": { "type": "number", "description": "Denyut jantung istirahat (bpm)" },
+        "maxHeartRate": { "type": "number", "description": "Denyut jantung maksimal (bpm)" },
+        "status": { "type": "string", "enum": ["Siap", "Modifikasi", "Istirahat", "Cedera"], "description": "Status kesiapan tanding" },
+        "photoUrl": { "type": "string", "description": "URL foto atlet" },
+        "ownerId": { "type": "string", "description": "UID pelatih/fisioterapis pemilik catatan" },
+        "createdAt": { "type": "string", "description": "Waktu pembuatan" }
+      },
+      "required": ["name", "sport", "status", "ownerId"]
+    },
+    "TrainingSession": {
+      "title": "TrainingSession",
+      "description": "Catatan sesi latihan dan beban kerja sRPE",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "date": { "type": "string", "description": "Tanggal sesi YYYY-MM-DD" },
+        "sessionType": { "type": "string", "description": "Jenis sesi latihan" },
+        "durationMinutes": { "type": "number", "description": "Durasi latihan dalam menit" },
+        "rpe": { "type": "number", "description": "Rating of Perceived Exertion (1-10)" },
+        "load": { "type": "number", "description": "Beban kerja = duration * rpe" },
+        "notes": { "type": "string", "maxLength": 500, "description": "Catatan sesi" },
+        "ownerId": { "type": "string", "description": "UID pelatih" }
+      },
+      "required": ["athleteId", "date", "durationMinutes", "rpe", "ownerId"]
+    },
+    "WellnessLog": {
+      "title": "WellnessLog",
+      "description": "Kuesioner kesiapan harian Hooper Index",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "date": { "type": "string", "description": "Tanggal log YYYY-MM-DD" },
+        "sleepQuality": { "type": "number", "description": "Kualitas tidur (1-7)" },
+        "sleepHours": { "type": "number", "description": "Jumlah jam tidur" },
+        "fatigue": { "type": "number", "description": "Tingkat kelelahan (1-7)" },
+        "soreness": { "type": "number", "description": "Nyeri otot DOMS (1-7)" },
+        "stress": { "type": "number", "description": "Tingkat stres psikologis (1-7)" },
+        "mood": { "type": "number", "description": "Kondisi suasana hati (1-7)" },
+        "readinessScore": { "type": "number", "description": "Skor kesiapan 0-100%" },
+        "ownerId": { "type": "string", "description": "UID pelatih" }
+      },
+      "required": ["athleteId", "date", "readinessScore", "ownerId"]
+    },
+    "FitnessTest": {
+      "title": "FitnessTest",
+      "description": "Hasil baterai tes fisik terstandar",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "date": { "type": "string", "description": "Tanggal tes YYYY-MM-DD" },
+        "vo2max": { "type": "number", "description": "VO2 Max ml/kg/min" },
+        "sprint20m": { "type": "number", "description": "Waktu lari 20m (detik)" },
+        "agilityTTest": { "type": "number", "description": "Waktu T-Test (detik)" },
+        "verticalJump": { "type": "number", "description": "Tinggi lompatan (cm)" },
+        "ownerId": { "type": "string", "description": "UID pelatih" }
+      },
+      "required": ["athleteId", "date", "ownerId"]
+    },
+    "JumpMeasurement": {
+      "title": "JumpMeasurement",
+      "description": "Pengukuran Vertical Jump via Kamera & Sensor Ponsel",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "date": { "type": "string", "description": "Tanggal tes" },
+        "jumpType": { "type": "string", "enum": ["CMJ", "SJ", "DJ"], "description": "Tipe lompatan" },
+        "flightTimeMs": { "type": "number", "description": "Waktu melayang (ms)" },
+        "jumpHeightCm": { "type": "number", "description": "Tinggi lompatan (cm)" },
+        "peakPowerWatts": { "type": "number", "description": "Sayers Peak Power (Watts)" },
+        "takeOffVelocityMs": { "type": "number", "description": "Kecepatan lepas landas (m/s)" },
+        "rsi": { "type": "number", "description": "Reactive Strength Index (DJ)" },
+        "method": { "type": "string", "enum": ["sensor", "camera", "manual"], "description": "Metode pengambilan data" },
+        "ownerId": { "type": "string", "description": "UID pelatih" }
+      },
+      "required": ["athleteId", "date", "jumpType", "jumpHeightCm", "ownerId"]
+    },
+    "VBTSession": {
+      "title": "VBTSession",
+      "description": "Sesi Velocity-Based Training angkat beban",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "date": { "type": "string", "description": "Tanggal sesi" },
+        "exercise": { "type": "string", "description": "Nama gerakan angkat beban" },
+        "loadKg": { "type": "number", "description": "Beban barbel (kg)" },
+        "totalReps": { "type": "number", "description": "Jumlah repetisi berhasil" },
+        "meanVelocity": { "type": "number", "description": "Rata-rata kecepatan konsentris (m/s)" },
+        "peakVelocity": { "type": "number", "description": "Kecepatan puncak (m/s)" },
+        "velocityDropPercent": { "type": "number", "description": "Penurunan kecepatan (%)" },
+        "estimated1RM": { "type": "number", "description": "Prediksi 1RM (kg)" },
+        "ownerId": { "type": "string", "description": "UID pelatih" }
+      },
+      "required": ["athleteId", "date", "exercise", "loadKg", "ownerId"]
+    },
+    "PainPoint": {
+      "title": "PainPoint",
+      "description": "Peta titik nyeri anatomis tubuh atlet",
+      "type": "object",
+      "properties": {
+        "athleteId": { "type": "string", "description": "ID atlet" },
+        "bodyPart": { "type": "string", "description": "Nama area tubuh" },
+        "view": { "type": "string", "enum": ["anterior", "posterior"], "description": "Tampak depan atau belakang" },
+        "x": { "type": "number", "description": "Koordinat horizontal %" },
+        "y": { "type": "number", "description": "Koordinat vertikal %" },
+        "painScore": { "type": "number", "description": "Skor nyeri VAS 1-10" },
+        "status": { "type": "string", "enum": ["Aktif", "Observasi", "Pulih"], "description": "Status keluhan" },
+        "notes": { "type": "string", "maxLength": 500, "description": "Keterangan klinis" },
+        "ownerId": { "type": "string", "description": "UID fisioterapis" }
+      },
+      "required": ["athleteId", "bodyPart", "painScore", "status", "ownerId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Profil pengguna / pelatih"
+    },
+    "/athletes/{athleteId}": {
+      "schema": "Athlete",
+      "description": "Daftar atlet binaan"
+    },
+    "/trainingSessions/{sessionId}": {
+      "schema": "TrainingSession",
+      "description": "Catatan sesi latihan dan beban kerja sRPE"
+    },
+    "/wellnessLogs/{logId}": {
+      "schema": "WellnessLog",
+      "description": "Kuesioner harian wellness Hooper Index"
+    },
+    "/fitnessTests/{testId}": {
+      "schema": "FitnessTest",
+      "description": "Rekam baterai tes fisik terstandar"
+    },
+    "/jumpMeasurements/{jumpId}": {
+      "schema": "JumpMeasurement",
+      "description": "Data tes vertical jump (CMJ/SJ/DJ)"
+    },
+    "/vbtSessions/{vbtId}": {
+      "schema": "VBTSession",
+      "description": "Data sesi Velocity-Based Training"
+    },
+    "/painPoints/{painId}": {
+      "schema": "PainPoint",
+      "description": "Peta titik nyeri anatomis tubuh atlet"
+    }
+  }
+}

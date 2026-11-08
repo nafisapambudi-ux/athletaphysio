@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // User Profile (PII Protected)
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId;
+      allow list: if false;
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      allow delete: if false;
+    }
+
+    // Athletes collection
+    match /athletes/{athleteId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(athleteId);
+    }
+
+    // Training Sessions
+    match /trainingSessions/{sessionId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(sessionId);
+    }
+
+    // Wellness Logs
+    match /wellnessLogs/{logId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(logId);
+    }
+
+    // Fitness Tests
+    match /fitnessTests/{testId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(testId);
+    }
+
+    // Jump Measurements
+    match /jumpMeasurements/{jumpId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(jumpId);
+    }
+
+    // VBT Sessions
+    match /vbtSessions/{vbtId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(vbtId);
+    }
+
+    // Pain Points
+    match /painPoints/{painId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(painId);
+    }
+
+    // Performance Goals
+    match /performanceGoals/{goalId} {
+      allow list: if true;
+      allow get, create, update, delete: if isValidId(goalId);
+    }
+
+
+  }
+}

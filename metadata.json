@@ -1,0 +1,6 @@
+{
+  "name": "AthletaPhysio - Monitoring Kondisi Fisik Atlet",
+  "description": "Sistem cerdas pemantauan kondisi fisik, beban latihan (ACWR), evaluasi kebugaran terstandar, dan kesiapan bertanding atlet berbasis Sports Science.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
