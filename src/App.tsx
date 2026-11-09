@@ -33,7 +33,8 @@ import {
   GoalMetricType,
 } from './types/athlete';
 import { exportAthletesToCSV, evaluateAthleteAlerts } from './utils/sportsScience';
-import { auth, signInWithGoogle, logOutUser, testFirestoreConnection } from './lib/firebase';
+import { initialJumpRecords, initialVBTRecords } from './utils/jumpAndVBT';
+import { auth, signInWithGoogle, logOutUser } from './lib/firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import {
   subscribeAthletes,
@@ -49,11 +50,28 @@ import {
   savePainPointToFirestore,
   saveJumpRecordToFirestore,
   saveVBTRecordToFirestore,
+  subscribeJumpRecords,
+  subscribeVBTRecords,
   subscribePerformanceGoals,
   savePerformanceGoalToFirestore,
   deletePerformanceGoalFromFirestore,
   seedFirestoreIfEmpty,
 } from './services/firestoreService';
+
+const localCacheKey = (name: string, ownerId: string | null, demoMode: boolean) =>
+  demoMode
+    ? `athletaphysio_${name}`
+    : `athletaphysio_${ownerId || 'guest'}_${name}`;
+
+function readLocalCache<T>(name: string, fallback: T, ownerId: string | null, demoMode: boolean): T {
+  try {
+    const saved = localStorage.getItem(localCacheKey(name, ownerId, demoMode));
+    return saved ? JSON.parse(saved) as T : fallback;
+  } catch (error) {
+    console.error(`Failed to load local ${name} cache:`, error);
+    return fallback;
+  }
+}
 
 export default function App() {
   const demoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -74,62 +92,103 @@ export default function App() {
   // Auth & Cloud State
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isCloudSyncing, setIsCloudSyncing] = useState<boolean>(false);
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [localStorageError, setLocalStorageError] = useState<string | null>(null);
+  const [localCacheOwner, setLocalCacheOwner] = useState(demoMode ? 'demo' : '');
 
   // Persistent storage state with fallbacks to initial data
   const [athletes, setAthletes] = useState<Athlete[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_athletes');
-    return saved ? JSON.parse(saved) : initialAthletes;
+    return readLocalCache('athletes', initialAthletes, null, demoMode);
   });
 
   const [trainingSessions, setTrainingSessions] = useState<TrainingSessionLog[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_sessions');
-    return saved ? JSON.parse(saved) : initialTrainingSessions;
+    return readLocalCache('sessions', initialTrainingSessions, null, demoMode);
   });
 
   const [wellnessLogs, setWellnessLogs] = useState<WellnessLog[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_wellness');
-    return saved ? JSON.parse(saved) : initialWellnessLogs;
+    return readLocalCache('wellness', initialWellnessLogs, null, demoMode);
   });
 
   const [fitnessTests, setFitnessTests] = useState<FitnessTestRecord[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_tests');
-    return saved ? JSON.parse(saved) : initialFitnessTests;
+    return readLocalCache('tests', initialFitnessTests, null, demoMode);
   });
 
   const [painPoints, setPainPoints] = useState<BodyPainPoint[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_pains');
-    return saved ? JSON.parse(saved) : initialPainPoints;
+    return readLocalCache('pains', initialPainPoints, null, demoMode);
   });
 
   const [performanceGoals, setPerformanceGoals] = useState<PerformanceGoal[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_goals');
-    return saved ? JSON.parse(saved) : initialPerformanceGoals;
+    return readLocalCache('goals', initialPerformanceGoals, null, demoMode);
   });
+  const [jumpMeasurements, setJumpMeasurements] = useState<JumpMeasurementRecord[]>(() => {
+    return readLocalCache('jump_records', initialJumpRecords, null, demoMode);
+  });
+  const [vbtSessions, setVbtSessions] = useState<VBTSessionRecord[]>(() => {
+    return readLocalCache('vbt_records', initialVBTRecords, null, demoMode);
+  });
+
+  const cacheNamespace = demoMode ? 'demo' : currentUser?.uid || 'guest';
+  const persistLocalCache = (name: string, value: unknown) => {
+    if (localCacheOwner !== cacheNamespace) return;
+    try {
+      localStorage.setItem(localCacheKey(name, currentUser?.uid || null, demoMode), JSON.stringify(value));
+    } catch (error) {
+      console.error(`Failed to save local ${name} cache:`, error);
+      setLocalStorageError('Penyimpanan lokal gagal. Ekspor atau sinkronkan data sebelum menutup halaman.');
+    }
+  };
+
+  // Keep each signed-in account's browser cache separate.
+  useEffect(() => {
+    if (demoMode) {
+      setLocalCacheOwner('demo');
+      return;
+    }
+
+    const ownerId = currentUser?.uid || null;
+    setAthletes(readLocalCache('athletes', initialAthletes, ownerId, false));
+    setTrainingSessions(readLocalCache('sessions', initialTrainingSessions, ownerId, false));
+    setWellnessLogs(readLocalCache('wellness', initialWellnessLogs, ownerId, false));
+    setFitnessTests(readLocalCache('tests', initialFitnessTests, ownerId, false));
+    setPainPoints(readLocalCache('pains', initialPainPoints, ownerId, false));
+    setPerformanceGoals(readLocalCache('goals', initialPerformanceGoals, ownerId, false));
+    setJumpMeasurements(readLocalCache('jump_records', initialJumpRecords, ownerId, false));
+    setVbtSessions(readLocalCache('vbt_records', initialVBTRecords, ownerId, false));
+    setLocalCacheOwner(ownerId || 'guest');
+  }, [currentUser?.uid, demoMode]);
 
   // Local storage mirror for offline resilience
   useEffect(() => {
-    localStorage.setItem('athletaphysio_athletes', JSON.stringify(athletes));
+    persistLocalCache('athletes', athletes);
   }, [athletes]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_sessions', JSON.stringify(trainingSessions));
+    persistLocalCache('sessions', trainingSessions);
   }, [trainingSessions]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_wellness', JSON.stringify(wellnessLogs));
+    persistLocalCache('wellness', wellnessLogs);
   }, [wellnessLogs]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_tests', JSON.stringify(fitnessTests));
+    persistLocalCache('tests', fitnessTests);
   }, [fitnessTests]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_pains', JSON.stringify(painPoints));
+    persistLocalCache('pains', painPoints);
   }, [painPoints]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_goals', JSON.stringify(performanceGoals));
+    persistLocalCache('goals', performanceGoals);
   }, [performanceGoals]);
+
+  useEffect(() => {
+    persistLocalCache('jump_records', jumpMeasurements);
+  }, [jumpMeasurements]);
+
+  useEffect(() => {
+    persistLocalCache('vbt_records', vbtSessions);
+  }, [vbtSessions]);
 
   // Firebase Auth Listener
   useEffect(() => {
@@ -137,71 +196,71 @@ export default function App() {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setCloudSyncError(null);
     });
     return () => unsubscribeAuth();
   }, [demoMode]);
 
   // Initialize Firestore Connection & Real-Time Sync
   useEffect(() => {
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     let unsubs: (() => void)[] = [];
 
     const initFirestore = async () => {
       try {
         setIsCloudSyncing(true);
-        await testFirestoreConnection();
+        setCloudSyncError(null);
         await seedFirestoreIfEmpty();
+        const handleSubscriptionError = () => {
+          setCloudSyncError('Sinkronisasi cloud gagal. Data lokal tetap tersedia.');
+          setIsCloudSyncing(false);
+        };
 
         // Subscribe to Athletes
         const unsubAthletes = subscribeAthletes((cloudAthletes) => {
-          if (cloudAthletes && cloudAthletes.length > 0) {
-            setAthletes(cloudAthletes);
-          }
-        });
+          setAthletes(cloudAthletes);
+        }, handleSubscriptionError);
         unsubs.push(unsubAthletes);
 
         // Subscribe to Training Sessions
         const unsubSessions = subscribeTrainingSessions((cloudSessions) => {
-          if (cloudSessions && cloudSessions.length > 0) {
-            setTrainingSessions(cloudSessions);
-          }
-        });
+          setTrainingSessions(cloudSessions);
+        }, handleSubscriptionError);
         unsubs.push(unsubSessions);
 
         // Subscribe to Wellness Logs
         const unsubWellness = subscribeWellnessLogs((cloudWellness) => {
-          if (cloudWellness && cloudWellness.length > 0) {
-            setWellnessLogs(cloudWellness);
-          }
-        });
+          setWellnessLogs(cloudWellness);
+        }, handleSubscriptionError);
         unsubs.push(unsubWellness);
 
         // Subscribe to Fitness Tests
         const unsubFitness = subscribeFitnessTests((cloudTests) => {
-          if (cloudTests && cloudTests.length > 0) {
-            setFitnessTests(cloudTests);
-          }
-        });
+          setFitnessTests(cloudTests);
+        }, handleSubscriptionError);
         unsubs.push(unsubFitness);
 
         // Subscribe to Pain Points
         const unsubPain = subscribePainPoints((cloudPains) => {
-          if (cloudPains && cloudPains.length > 0) {
-            setPainPoints(cloudPains);
-          }
-        });
+          setPainPoints(cloudPains);
+        }, handleSubscriptionError);
         unsubs.push(unsubPain);
+
+        const unsubJumps = subscribeJumpRecords(setJumpMeasurements, handleSubscriptionError);
+        unsubs.push(unsubJumps);
+
+        const unsubVBT = subscribeVBTRecords(setVbtSessions, handleSubscriptionError);
+        unsubs.push(unsubVBT);
 
         // Subscribe to Performance Goals
         const unsubGoals = subscribePerformanceGoals((cloudGoals) => {
-          if (cloudGoals && cloudGoals.length > 0) {
-            setPerformanceGoals(cloudGoals);
-          }
-        });
+          setPerformanceGoals(cloudGoals);
+        }, handleSubscriptionError);
         unsubs.push(unsubGoals);
       } catch (err) {
-        console.warn('Firestore initialization or offline fallback:', err);
+        console.error('Firestore initialization failed:', err);
+        setCloudSyncError('Sinkronisasi cloud gagal. Data lokal tetap tersedia.');
       } finally {
         setIsCloudSyncing(false);
       }
@@ -212,7 +271,7 @@ export default function App() {
     return () => {
       unsubs.forEach((unsub) => unsub());
     };
-  }, [demoMode]);
+  }, [currentUser, demoMode]);
 
   // Navigation tab state
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -252,7 +311,7 @@ export default function App() {
       })
     );
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     // Save to Firestore
     try {
@@ -291,7 +350,7 @@ export default function App() {
       })
     );
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     // Save to Firestore
     try {
@@ -314,7 +373,7 @@ export default function App() {
     };
     setFitnessTests((prev) => [test, ...prev]);
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     // Save to Firestore
     try {
@@ -328,6 +387,7 @@ export default function App() {
   };
 
   const handleAddJumpRecord = async (jumpRecord: JumpMeasurementRecord) => {
+    setJumpMeasurements((prev) => [jumpRecord, ...prev]);
     const testRecord: FitnessTestRecord = {
       id: `fit-${Date.now().toString().slice(-4)}`,
       athleteId: jumpRecord.athleteId,
@@ -355,14 +415,14 @@ export default function App() {
         lastUpdated: jumpRecord.date,
       };
       setPerformanceGoals((prev) => prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g)));
-      if (!demoMode) {
+      if (!demoMode && currentUser) {
         savePerformanceGoalToFirestore(updatedGoal).catch((e) =>
           console.warn('Auto-sync goal jump height to Firestore:', e)
         );
       }
     }
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     // Save to Firestore
     try {
@@ -371,6 +431,25 @@ export default function App() {
       await saveFitnessTestToFirestore(testRecord);
     } catch (e) {
       console.error('Failed to sync jump record to Firestore:', e);
+    } finally {
+      setIsCloudSyncing(false);
+    }
+  };
+
+  const handleAddVBTRecord = async (record: VBTSessionRecord) => {
+    setVbtSessions((prev) => [record, ...prev]);
+    if (demoMode) return 'local' as const;
+    if (!currentUser) return 'local' as const;
+
+    try {
+      setIsCloudSyncing(true);
+      setCloudSyncError(null);
+      await saveVBTRecordToFirestore(record);
+      return 'cloud' as const;
+    } catch (e) {
+      console.error('Failed to sync VBT record to Firestore:', e);
+      setCloudSyncError('Gagal menyinkronkan sesi VBT. Data lokal tetap tersimpan.');
+      throw e;
     } finally {
       setIsCloudSyncing(false);
     }
@@ -385,7 +464,7 @@ export default function App() {
     };
     setPerformanceGoals((prev) => [goal, ...prev]);
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     try {
       setIsCloudSyncing(true);
@@ -402,7 +481,7 @@ export default function App() {
       prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g))
     );
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     try {
       setIsCloudSyncing(true);
@@ -417,7 +496,7 @@ export default function App() {
   const handleDeleteGoal = async (goalId: string) => {
     setPerformanceGoals((prev) => prev.filter((g) => g.id !== goalId));
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     try {
       setIsCloudSyncing(true);
@@ -454,7 +533,7 @@ export default function App() {
       prev.map((g) => (g.id === updatedGoal.id ? updatedGoal : g))
     );
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     try {
       await savePerformanceGoalToFirestore(updatedGoal);
@@ -483,7 +562,7 @@ export default function App() {
       );
     }
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     // Save to Firestore
     try {
@@ -512,7 +591,7 @@ export default function App() {
     );
 
     if (updatedPoint) {
-      if (demoMode) return;
+      if (demoMode || !currentUser) return;
 
       try {
         await savePainPointToFirestore(updatedPoint);
@@ -525,7 +604,7 @@ export default function App() {
   const handleAddAthlete = async (newAthlete: Athlete) => {
     setAthletes((prev) => [newAthlete, ...prev]);
 
-    if (demoMode) return;
+    if (demoMode || !currentUser) return;
 
     try {
       setIsCloudSyncing(true);
@@ -555,18 +634,20 @@ export default function App() {
 
   const handleResetData = () => {
     if (window.confirm('Reset data lokal kembali ke data simulasi atlet awal?')) {
-      localStorage.removeItem('athletaphysio_athletes');
-      localStorage.removeItem('athletaphysio_sessions');
-      localStorage.removeItem('athletaphysio_wellness');
-      localStorage.removeItem('athletaphysio_tests');
-      localStorage.removeItem('athletaphysio_pains');
-      localStorage.removeItem('athletaphysio_goals');
+      const ownerId = currentUser?.uid || null;
+      ['athletes', 'sessions', 'wellness', 'tests', 'pains', 'goals', 'jump_records', 'vbt_records']
+        .forEach((name) => {
+          localStorage.removeItem(localCacheKey(name, ownerId, demoMode));
+          if (!demoMode && !ownerId) localStorage.removeItem(`athletaphysio_${name}`);
+        });
       setAthletes(initialAthletes);
       setTrainingSessions(initialTrainingSessions);
       setWellnessLogs(initialWellnessLogs);
       setFitnessTests(initialFitnessTests);
       setPainPoints(initialPainPoints);
       setPerformanceGoals(initialPerformanceGoals);
+      setJumpMeasurements(initialJumpRecords);
+      setVbtSessions(initialVBTRecords);
     }
   };
 
@@ -577,6 +658,13 @@ export default function App() {
 
   // Evaluate real-time early warning risk alerts (ACWR outside 0.8-1.3 or Pain > 5 in last 24h)
   const athleteAlerts = evaluateAthleteAlerts(athletes, painPoints);
+  if (localCacheOwner !== cacheNamespace) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-sm text-slate-600 dark:bg-slate-950 dark:text-slate-300">
+        Memuat data lokal untuk akun ini...
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
@@ -594,6 +682,7 @@ export default function App() {
         onSignIn={handleSignIn}
         onSignOut={handleSignOut}
         isCloudSyncing={isCloudSyncing}
+        cloudSyncError={cloudSyncError}
         alerts={athleteAlerts}
         onSelectAthleteDetail={(athlete) => setDetailAthlete(athlete)}
         onSelectAthleteForAI={(athlete) => setAiAdvisorAthlete(athlete)}
@@ -604,6 +693,16 @@ export default function App() {
         {demoMode && (
           <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
             Mode demo publik: data hanya tersimpan di browser perangkat ini dan tidak disinkronkan ke cloud.
+          </div>
+        )}
+        {!demoMode && !currentUser && (
+          <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200">
+            Belum masuk: perubahan tersimpan pada cache browser lokal (tidak terenkripsi dan tidak disinkronkan ke cloud). Masuk dengan Google untuk cache terpisah per akun dan data cloud pribadi.
+          </div>
+        )}
+        {localStorageError && (
+          <div role="alert" className="mb-5 rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+            {localStorageError}
           </div>
         )}
         {activeTab === 'overview' && (
@@ -635,8 +734,11 @@ export default function App() {
         {activeTab === 'jump_vbt' && (
           <JumpAndVBTTracker
             athletes={athletes}
+            jumpRecords={jumpMeasurements}
+            vbtRecords={vbtSessions}
             goals={performanceGoals}
             onAddJumpRecord={handleAddJumpRecord}
+            onAddVBTRecord={handleAddVBTRecord}
             onUpdateGoalCurrentValue={handleUpdateGoalCurrentValue}
             onSelectAthleteDetail={(athlete) => setDetailAthlete(athlete)}
           />

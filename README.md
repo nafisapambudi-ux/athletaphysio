@@ -23,15 +23,17 @@ Aplikasi web modern pemantauan kondisi fisik, beban latihan (*workload*), evalua
 * **Filter Atlet & Cabor**: Pengawasan individual dan per cabang olahraga secara dinamis.
 
 ### 2. Pengukuran Biomekanika: Vertical Jump (CMJ/SJ/DJ) & VBT
-* **Sensor Akselerometer HP (IMU)**: Mengukur waktu melayang (*flight time*) saat fase *free-fall* $(<0.35G)$ dan impak pendaratan $(>2.4G)$ via `DeviceMotionEvent`.
-* **Kamera Video Biomekanika**: HUD bidikan kamera dengan panduan garis pendaratan dan perhitungan milidetik.
+* **Sensor Akselerometer HP (IMU)**: Mengestimasi waktu melayang (*flight time*) dari fase *free-fall* dan impak pendaratan via `DeviceMotionEvent`; hasil bergantung pada perangkat serta pemasangan HP.
+* **Kamera Video Biomekanika**: Pratinjau video dengan penandaan take-off dan landing manual; kamera tidak melakukan pelacakan pose otomatis.
 * **Kalkulasi Standar Emas**:
   * Tinggi lompatan rumus Bosco: $h = 122.625 \times t^2$ (cm).
   * Daya mekanik puncak Sayers: $P = 60.7 \times h + 45.3 \times \text{BB} - 2055$ (Watt).
   * Kecepatan lepas landas (*take-off velocity*): $v = 4.905 \times t$ (m/s).
   * Reactive Strength Index (RSI) untuk Drop Jump.
 * **Velocity-Based Training (VBT)**:
-  * Pelacakan *Mean Concentric Velocity* (m/s) dan *Peak Velocity* per repetisi.
+  * Estimasi *Mean Concentric Velocity* (m/s) per repetisi dari akselerometer HP yang terpasang kuat pada barbel, dengan kalibrasi gravitasi saat HP diam dan pencatatan frekuensi sampel.
+  * Data bertanda **estimasi belum tervalidasi** sampai diuji pada beberapa HP dan dibandingkan dengan instrumen referensi. Jangan gunakan estimasi untuk keputusan klinis atau resep beban tanpa validasi pelatih.
+  * Protokol tes menyimpan gerakan, beban, rentang gerak/tempo, status pemasangan HP, dan frekuensi sampel agar sesi dapat dibandingkan secara konsisten.
   * Alarm pemutus kelelahan (*Velocity Loss Cut-off*) via Web Audio API Synthesizer.
   * Prediksi 1RM (*One-Rep Max*) otomatis dari kurva beban-kecepatan.
 
@@ -43,6 +45,7 @@ Aplikasi web modern pemantauan kondisi fisik, beban latihan (*workload*), evalua
 
 ### 4. Database Cloud Persisten & Autentikasi
 * **Google Cloud Firestore**: Sinkronisasi data real-time dengan aturan keamanan *Role-Based Access Control* (`firestore.rules`).
+* **Isolasi Data per Akun**: Koleksi Firestore hanya dapat dibaca/ditulis pengguna yang terautentikasi dan memiliki `ownerId` yang cocok. Cache browser juga dipisah per akun; cache lokal tidak terenkripsi dan perangkat bersama tetap perlu dilindungi.
 * **Firebase Authentication**: Masuk dengan akun Google untuk isolasi data pelatih dan atlet.
 * **Resiliensi Offline**: Penyimpanan *local storage mirror* sehingga aplikasi tetap dapat berjalan saat internet tidak stabil.
 
@@ -95,6 +98,8 @@ Untuk membuka aplikasi dari HP:
 3. Buka alamat `http://<IP-komputer>:3000` yang ditampilkan di terminal pada browser HP.
 
 Jika alamat tidak dapat dibuka, izinkan Node.js melewati Windows Firewall pada jaringan privat. Server pengembangan ini hanya dapat diakses dari jaringan lokal; untuk akses dari luar jaringan, aplikasi perlu di-deploy ke layanan hosting.
+
+Sensor gerak HP memerlukan dukungan browser dan, pada beberapa perangkat, HTTPS serta izin Motion & Orientation. Uji VBT di beberapa perangkat dan bandingkan dengan alat referensi sebelum menggunakan angkanya untuk mengubah program latihan. Setelah perubahan aturan akses database, deploy `firestore.rules` ke proyek Firebase yang sesuai sebelum mengaktifkan sinkronisasi cloud.
 
 ### 5. Build Produksi
 ```bash

@@ -110,10 +110,10 @@ export interface JumpMeasurementRecord {
 export interface VBTRepData {
   repNumber: number;
   meanVelocity: number; // in m/s
-  peakVelocity: number; // in m/s
+  peakVelocity?: number; // in m/s
   velocityLoss: number; // in %
-  peakPowerWatts: number;
-  concentricDurationMs: number;
+  peakPowerWatts?: number;
+  concentricDurationMs?: number;
   quality: 'Optimal' | 'Warning' | 'Fatigued';
 }
 
@@ -121,6 +121,7 @@ export interface VBTSessionRecord {
   id: string;
   athleteId: string;
   date: string;
+  recordedAt?: string;
   exercise: string;
   loadKg: number;
   reps: VBTRepData[];
@@ -128,6 +129,11 @@ export interface VBTSessionRecord {
   estimated1RM: number;
   targetZone: 'Kecepatan Murni (>1.0 m/s)' | 'Speed-Strength (0.75-1.0 m/s)' | 'Strength-Speed (0.5-0.75 m/s)' | 'Kekuatan Maksimal (<0.5 m/s)';
   velocityLossCutoffPercent: number;
+  measurementMethod?: 'phone_accelerometer_estimate';
+  measurementConfidence?: 'unvalidated_estimate';
+  sensorSampleRateHz?: number;
+  phoneMount?: string;
+  testProtocol?: string;
   notes?: string;
 }
 
@@ -158,5 +164,3 @@ export interface PerformanceGoal {
   updatedAt?: string;
   lastUpdated?: string;
 }
-
-

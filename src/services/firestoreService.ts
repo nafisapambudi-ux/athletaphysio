@@ -5,9 +5,8 @@ import {
   getDocs,
   onSnapshot,
   query,
-  updateDoc,
   deleteDoc,
-  serverTimestamp,
+  where,
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import {
@@ -23,9 +22,26 @@ import {
 import { initialAthletes, initialTrainingSessions, initialWellnessLogs, initialFitnessTests, initialPainPoints, initialPerformanceGoals } from '../data/initialData';
 import { initialJumpRecords, initialVBTRecords } from '../utils/jumpAndVBT';
 
-// Helper to get active ownerId or fallback
 const getOwnerId = (): string => {
-  return auth.currentUser?.uid || 'demo';
+  const ownerId = auth.currentUser?.uid;
+  if (!ownerId) throw new Error('Sign in is required to access cloud athlete records.');
+  return ownerId;
+};
+
+const getOwnedCollection = (collectionName: string) =>
+  query(collection(db, collectionName), where('ownerId', '==', getOwnerId()));
+
+const reportSubscriptionError = (
+  error: unknown,
+  collectionName: string,
+  onError?: (error: unknown) => void
+) => {
+  try {
+    handleFirestoreError(error, OperationType.LIST, collectionName);
+  } catch (reportedError) {
+    if (!onError) throw reportedError;
+    onError(reportedError);
+  }
 };
 
 // ==========================================
@@ -34,7 +50,7 @@ const getOwnerId = (): string => {
 const ATHLETES_COL = 'athletes';
 
 export const subscribeAthletes = (onData: (athletes: Athlete[]) => void, onError?: (err: unknown) => void) => {
-  const colRef = collection(db, ATHLETES_COL);
+  const colRef = getOwnedCollection(ATHLETES_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -49,8 +65,7 @@ export const subscribeAthletes = (onData: (athletes: Athlete[]) => void, onError
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, ATHLETES_COL);
-      onError?.(error);
+      reportSubscriptionError(error, ATHLETES_COL, onError);
     }
   );
 };
@@ -83,8 +98,11 @@ export const deleteAthleteFromFirestore = async (athleteId: string): Promise<voi
 // ==========================================
 const SESSIONS_COL = 'trainingSessions';
 
-export const subscribeTrainingSessions = (onData: (sessions: TrainingSessionLog[]) => void) => {
-  const colRef = collection(db, SESSIONS_COL);
+export const subscribeTrainingSessions = (
+  onData: (sessions: TrainingSessionLog[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(SESSIONS_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -95,7 +113,7 @@ export const subscribeTrainingSessions = (onData: (sessions: TrainingSessionLog[
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, SESSIONS_COL);
+      reportSubscriptionError(error, SESSIONS_COL, onError);
     }
   );
 };
@@ -119,8 +137,11 @@ export const saveTrainingSessionToFirestore = async (session: TrainingSessionLog
 // ==========================================
 const WELLNESS_COL = 'wellnessLogs';
 
-export const subscribeWellnessLogs = (onData: (logs: WellnessLog[]) => void) => {
-  const colRef = collection(db, WELLNESS_COL);
+export const subscribeWellnessLogs = (
+  onData: (logs: WellnessLog[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(WELLNESS_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -131,7 +152,7 @@ export const subscribeWellnessLogs = (onData: (logs: WellnessLog[]) => void) => 
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, WELLNESS_COL);
+      reportSubscriptionError(error, WELLNESS_COL, onError);
     }
   );
 };
@@ -155,8 +176,11 @@ export const saveWellnessLogToFirestore = async (log: WellnessLog): Promise<void
 // ==========================================
 const FITNESS_COL = 'fitnessTests';
 
-export const subscribeFitnessTests = (onData: (tests: FitnessTestRecord[]) => void) => {
-  const colRef = collection(db, FITNESS_COL);
+export const subscribeFitnessTests = (
+  onData: (tests: FitnessTestRecord[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(FITNESS_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -167,7 +191,7 @@ export const subscribeFitnessTests = (onData: (tests: FitnessTestRecord[]) => vo
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, FITNESS_COL);
+      reportSubscriptionError(error, FITNESS_COL, onError);
     }
   );
 };
@@ -191,8 +215,11 @@ export const saveFitnessTestToFirestore = async (test: FitnessTestRecord): Promi
 // ==========================================
 const PAIN_COL = 'painPoints';
 
-export const subscribePainPoints = (onData: (points: BodyPainPoint[]) => void) => {
-  const colRef = collection(db, PAIN_COL);
+export const subscribePainPoints = (
+  onData: (points: BodyPainPoint[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(PAIN_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -203,7 +230,7 @@ export const subscribePainPoints = (onData: (points: BodyPainPoint[]) => void) =
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, PAIN_COL);
+      reportSubscriptionError(error, PAIN_COL, onError);
     }
   );
 };
@@ -227,8 +254,11 @@ export const savePainPointToFirestore = async (point: BodyPainPoint): Promise<vo
 // ==========================================
 const JUMPS_COL = 'jumpMeasurements';
 
-export const subscribeJumpRecords = (onData: (records: JumpMeasurementRecord[]) => void) => {
-  const colRef = collection(db, JUMPS_COL);
+export const subscribeJumpRecords = (
+  onData: (records: JumpMeasurementRecord[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(JUMPS_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -239,7 +269,7 @@ export const subscribeJumpRecords = (onData: (records: JumpMeasurementRecord[]) 
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, JUMPS_COL);
+      reportSubscriptionError(error, JUMPS_COL, onError);
     }
   );
 };
@@ -263,8 +293,11 @@ export const saveJumpRecordToFirestore = async (record: JumpMeasurementRecord): 
 // ==========================================
 const VBT_COL = 'vbtSessions';
 
-export const subscribeVBTRecords = (onData: (records: VBTSessionRecord[]) => void) => {
-  const colRef = collection(db, VBT_COL);
+export const subscribeVBTRecords = (
+  onData: (records: VBTSessionRecord[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(VBT_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -275,7 +308,7 @@ export const subscribeVBTRecords = (onData: (records: VBTSessionRecord[]) => voi
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, VBT_COL);
+      reportSubscriptionError(error, VBT_COL, onError);
     }
   );
 };
@@ -299,8 +332,11 @@ export const saveVBTRecordToFirestore = async (record: VBTSessionRecord): Promis
 // ==========================================
 const GOALS_COL = 'performanceGoals';
 
-export const subscribePerformanceGoals = (onData: (goals: PerformanceGoal[]) => void) => {
-  const colRef = collection(db, GOALS_COL);
+export const subscribePerformanceGoals = (
+  onData: (goals: PerformanceGoal[]) => void,
+  onError?: (err: unknown) => void
+) => {
+  const colRef = getOwnedCollection(GOALS_COL);
   return onSnapshot(
     colRef,
     (snapshot) => {
@@ -311,7 +347,7 @@ export const subscribePerformanceGoals = (onData: (goals: PerformanceGoal[]) => 
       onData(data);
     },
     (error) => {
-      handleFirestoreError(error, OperationType.LIST, GOALS_COL);
+      reportSubscriptionError(error, GOALS_COL, onError);
     }
   );
 };
@@ -344,7 +380,7 @@ export const deletePerformanceGoalFromFirestore = async (goalId: string): Promis
 // ==========================================
 export const seedFirestoreIfEmpty = async (): Promise<boolean> => {
   try {
-    const athletesSnap = await getDocs(collection(db, ATHLETES_COL));
+    const athletesSnap = await getDocs(getOwnedCollection(ATHLETES_COL));
     if (athletesSnap.empty) {
       console.log('Seeding initial athletes into Firestore...');
       const owner = getOwnerId();
@@ -395,6 +431,6 @@ export const seedFirestoreIfEmpty = async (): Promise<boolean> => {
     return false;
   } catch (err) {
     console.error('Error during initial seed check:', err);
-    return false;
+    throw err;
   }
 };

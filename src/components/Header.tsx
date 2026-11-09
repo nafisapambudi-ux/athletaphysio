@@ -34,6 +34,7 @@ interface HeaderProps {
   onSignIn: () => void;
   onSignOut: () => void;
   isCloudSyncing: boolean;
+  cloudSyncError?: string | null;
   alerts?: AthleteRiskAlert[];
   onSelectAthleteDetail?: (athlete: Athlete) => void;
   onSelectAthleteForAI?: (athlete: Athlete) => void;
@@ -51,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   onSignIn,
   onSignOut,
   isCloudSyncing,
+  cloudSyncError = null,
   alerts = [],
   onSelectAthleteDetail,
   onSelectAthleteForAI,
@@ -138,11 +140,13 @@ export const Header: React.FC<HeaderProps> = ({
               Demo Lokal
             </span>
           ) : <div 
-            title={isCloudSyncing ? "Menyinkronkan ke Cloud Firestore..." : "Database Cloud Firestore Terhubung"} 
+            title={cloudSyncError || (isCloudSyncing ? "Menyinkronkan ke Cloud Firestore..." : currentUser ? "Database Cloud Firestore Terhubung" : "Masuk untuk mengaktifkan sinkronisasi cloud")}
             className="hidden md:flex items-center gap-1 text-[11px] font-mono text-slate-500 dark:text-slate-400 px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-md"
           >
-            <span className={`w-2 h-2 rounded-full ${isCloudSyncing ? 'bg-amber-500 animate-ping' : 'bg-emerald-500'}`} />
-            <span className="text-[10px]">{isCloudSyncing ? 'Sync...' : 'Cloud Aktif'}</span>
+            <span className={`w-2 h-2 rounded-full ${cloudSyncError ? 'bg-rose-500' : isCloudSyncing ? 'bg-amber-500 animate-ping' : currentUser ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+            <span className="text-[10px]">
+              {cloudSyncError ? 'Sync gagal' : isCloudSyncing ? 'Sync...' : currentUser ? 'Cloud Aktif' : 'Lokal'}
+            </span>
           </div>}
 
           {/* Alert Center Notification Bell */}

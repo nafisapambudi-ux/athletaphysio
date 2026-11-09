@@ -6,20 +6,14 @@ import {
   getVBTZone,
   estimate1RMFromVBT,
   sportsAudio,
-  initialJumpRecords,
-  initialVBTRecords,
 } from '../utils/jumpAndVBT';
 import {
   Zap,
   Camera,
   Smartphone,
-  Play,
-  Square,
-  RefreshCw,
   Trophy,
   Volume2,
   VolumeX,
-  Plus,
   CheckCircle2,
   AlertTriangle,
   Activity,
@@ -27,18 +21,68 @@ import {
   Target,
   ArrowRight,
 } from 'lucide-react';
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 interface JumpAndVBTTrackerProps {
   athletes: Athlete[];
+  jumpRecords: JumpMeasurementRecord[];
+  vbtRecords: VBTSessionRecord[];
   goals?: PerformanceGoal[];
   onAddJumpRecord?: (record: JumpMeasurementRecord) => void;
-  onAddVBTRecord?: (record: VBTSessionRecord) => void;
+  onAddVBTRecord?: (record: VBTSessionRecord) => Promise<'cloud' | 'local'> | 'cloud' | 'local';
   onUpdateGoalCurrentValue?: (athleteId: string, metricType: GoalMetricType, newValue: number) => void;
   onSelectAthleteDetail: (athlete: Athlete) => void;
 }
 
+const createRecordId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+interface MotionVector {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface VBTRepDetection {
+  phase: 'waiting' | 'lifting';
+  lastTimestamp: number | null;
+  startTimestamp: number;
+  velocity: number;
+  peakVelocity: number;
+  displacement: number;
+  previousAcceleration: number;
+  positiveAccelerationSamples: number;
+  lowVelocitySamples: number;
+}
+
+const isMotionVector = (
+  value: DeviceMotionEventAcceleration | null
+): value is DeviceMotionEventAcceleration & MotionVector =>
+  value !== null
+  && [value.x, value.y, value.z].every((component) => component !== null && Number.isFinite(component));
+
+const averageVector = (vectors: MotionVector[]): MotionVector =>
+  vectors.reduce(
+    (average, vector) => ({
+      x: average.x + vector.x / vectors.length,
+      y: average.y + vector.y / vectors.length,
+      z: average.z + vector.z / vectors.length,
+    }),
+    { x: 0, y: 0, z: 0 }
+  );
+
 export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   athletes,
+  jumpRecords,
+  vbtRecords,
   goals = [],
   onAddJumpRecord,
   onAddVBTRecord,
@@ -53,16 +97,12 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   // Jump Measurement State
   const [jumpMethod, setJumpMethod] = useState<'camera' | 'sensor'>('camera');
   const [jumpType, setJumpType] = useState<JumpMeasurementRecord['jumpType']>('CMJ (Countermovement Jump)');
-  const [jumpHistory, setJumpHistory] = useState<JumpMeasurementRecord[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_jump_records');
-    return saved ? JSON.parse(saved) : initialJumpRecords;
-  });
+  const jumpHistory = jumpRecords;
 
   // Jump Camera / Video Tracking State
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraFacing, setCameraFacing] = useState<'user' | 'environment'>('environment');
   const [jumpPhase, setJumpPhase] = useState<'idle' | 'ready' | 'airborne' | 'landed'>('idle');
-  const [takeoffTimestamp, setTakeoffTimestamp] = useState<number | null>(null);
   const [measuredFlightTimeMs, setMeasuredFlightTimeMs] = useState<number>(0);
   const [measuredJumpHeightCm, setMeasuredJumpHeightCm] = useState<number>(0);
   const [measuredPeakPowerWatts, setMeasuredPeakPowerWatts] = useState<number>(0);
@@ -71,37 +111,79 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
   // Jump Sensor (DeviceMotion) State
   const [sensorActive, setSensorActive] = useState<boolean>(false);
-  const [currentAccelZ, setCurrentAccelZ] = useState<number>(9.81);
   const [currentAccelMag, setCurrentAccelMag] = useState<number>(1.0); // in G
-  const [sensorAvailable, setSensorAvailable] = useState<boolean | null>(null);
 
   // Video Ref
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const jumpPhaseRef = useRef(jumpPhase);
+  const takeoffTimestampRef = useRef<number | null>(null);
+  const soundEnabledRef = useRef(soundEnabled);
+  const vbtCalibrationRef = useRef<{
+    gravitySamples: MotionVector[];
+    linearSamples: MotionVector[];
+    sampleTimestamps: number[];
+  } | null>(null);
+  const vbtGravityAxisRef = useRef<MotionVector | null>(null);
+  const vbtGravityBaselineRef = useRef<MotionVector | null>(null);
+  const vbtLinearBaselineRef = useRef<MotionVector | null>(null);
+  const vbtRepDetectionRef = useRef<VBTRepDetection | null>(null);
+  const vbtRepsRef = useRef<VBTRepData[]>([]);
+  const vbtCalibrationTimeoutRef = useRef<number | null>(null);
+  const vbtSampleTimestampsRef = useRef<number[]>([]);
+  const vbtSampleRateRef = useRef(0);
+  const vbtSampleEventsRef = useRef(0);
 
   // VBT State
   const [vbtExercise, setVbtExercise] = useState<string>('Back Squat');
   const [vbtLoadKg, setVbtLoadKg] = useState<number>(80);
   const [vbtCutoffPercent, setVbtCutoffPercent] = useState<number>(15);
-  const [vbtHistory, setVbtHistory] = useState<VBTSessionRecord[]>(() => {
-    const saved = localStorage.getItem('athletaphysio_vbt_records');
-    return saved ? JSON.parse(saved) : initialVBTRecords;
-  });
+  const [vbtProtocolNote, setVbtProtocolNote] = useState('Rentang gerak standar; konsentrik dengan intent maksimal.');
+  const [vbtMountConfirmed, setVbtMountConfirmed] = useState(false);
+  const [vbtAreaClear, setVbtAreaClear] = useState(false);
+  const vbtHistory = vbtRecords;
   const [currentVBTSetReps, setCurrentVBTSetReps] = useState<VBTRepData[]>([]);
-  const [isVBTTracking, setIsVBTTracking] = useState<boolean>(false);
   const [liveConcentricVelocity, setLiveConcentricVelocity] = useState<number>(0.0);
+  const [vbtSensorActive, setVbtSensorActive] = useState(false);
+  const [vbtCalibrating, setVbtCalibrating] = useState(false);
+  const [vbtReady, setVbtReady] = useState(false);
+  const [vbtRecording, setVbtRecording] = useState(false);
+  const [vbtSensorError, setVbtSensorError] = useState<string | null>(null);
+  const [vbtSampleRateHz, setVbtSampleRateHz] = useState(0);
+  const [vbtSaveStatus, setVbtSaveStatus] = useState<'idle' | 'saving' | 'local' | 'cloud' | 'error'>('idle');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const currentAthlete = athletes.find((a) => a.id === selectedAthleteId) || athletes[0];
+  const athleteRef = useRef(currentAthlete);
+  const vbtTrendData = vbtHistory
+    .filter((session) =>
+      session.athleteId === selectedAthleteId
+      && session.exercise === vbtExercise
+      && session.measurementMethod === 'phone_accelerometer_estimate'
+    )
+    .sort((a, b) =>
+      (a.recordedAt || a.date).localeCompare(b.recordedAt || b.date)
+      || a.id.localeCompare(b.id)
+    )
+    .slice(-12)
+    .map((session, index) => ({
+      session: `${session.date.slice(5)}${session.recordedAt
+        ? ` ${new Date(session.recordedAt).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}`
+        : ''} #${index + 1}`,
+      meanVelocityAvg: session.meanVelocityAvg,
+    }));
 
-  // Save history to localStorage
   useEffect(() => {
-    localStorage.setItem('athletaphysio_jump_records', JSON.stringify(jumpHistory));
-  }, [jumpHistory]);
+    jumpPhaseRef.current = jumpPhase;
+  }, [jumpPhase]);
 
   useEffect(() => {
-    localStorage.setItem('athletaphysio_vbt_records', JSON.stringify(vbtHistory));
-  }, [vbtHistory]);
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    athleteRef.current = currentAthlete;
+  }, [currentAthlete]);
 
   // Handle Camera Startup & Teardown
   useEffect(() => {
@@ -114,6 +196,277 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       stopCamera();
     };
   }, [cameraActive, cameraFacing]);
+
+  useEffect(() => {
+    if (!sensorActive || activeModule !== 'jump' || jumpMethod !== 'sensor') return;
+
+    const handleMotion = (event: DeviceMotionEvent) => {
+      const acceleration = event.acceleration;
+      const accelerationWithGravity = event.accelerationIncludingGravity;
+      const hasLinearAcceleration = acceleration
+        && [acceleration.x, acceleration.y, acceleration.z].every((value) => value !== null && Number.isFinite(value));
+      const acc = hasLinearAcceleration
+        ? acceleration
+        : accelerationWithGravity;
+      if (!acc || acc.x === null || acc.y === null || acc.z === null) return;
+
+      const x = acc.x;
+      const y = acc.y;
+      const z = acc.z;
+      const magnitude = Math.sqrt(x * x + y * y + z * z);
+      const magnitudeG = magnitude / 9.81;
+      setCurrentAccelMag(+magnitudeG.toFixed(2));
+
+      if (jumpPhaseRef.current === 'ready' && magnitudeG < 0.35) {
+        const takeoffAt = performance.now();
+        takeoffTimestampRef.current = takeoffAt;
+        jumpPhaseRef.current = 'airborne';
+        setJumpPhase('airborne');
+        if (soundEnabledRef.current) sportsAudio.playTakeoffBeep();
+      } else if (jumpPhaseRef.current === 'airborne' && magnitudeG > 2.4) {
+        const takeoffAt = takeoffTimestampRef.current;
+        if (takeoffAt !== null) {
+          const flightMs = Math.round(performance.now() - takeoffAt);
+          if (flightMs >= 200 && flightMs <= 1100) {
+            processJumpResults(flightMs, 'Sensor Akselerometer HP');
+          } else {
+            setToastMessage('Durasi lompatan sensor tidak valid. Ulangi tes dengan posisi HP terpasang stabil.');
+          }
+          takeoffTimestampRef.current = null;
+        }
+        jumpPhaseRef.current = 'landed';
+        setJumpPhase('landed');
+        if (soundEnabledRef.current) sportsAudio.playLandingBeep();
+      }
+    };
+
+    window.addEventListener('devicemotion', handleMotion);
+    return () => window.removeEventListener('devicemotion', handleMotion);
+  }, [activeModule, sensorActive, jumpMethod]);
+
+  useEffect(() => {
+    if (!vbtSensorActive || activeModule !== 'vbt') return;
+
+    const handleVBTMotion = (event: DeviceMotionEvent) => {
+      const gravity = event.accelerationIncludingGravity;
+      const linearAcceleration = event.acceleration;
+      if (!isMotionVector(gravity)) return;
+
+      if (vbtCalibrating) {
+        const calibration = vbtCalibrationRef.current;
+        if (!calibration) return;
+
+        calibration.sampleTimestamps.push(performance.now());
+        calibration.gravitySamples.push(gravity);
+        if (isMotionVector(linearAcceleration)) {
+          calibration.linearSamples.push(linearAcceleration);
+        }
+        if (calibration.gravitySamples.length < 40) return;
+
+        const gravityBaseline = averageVector(calibration.gravitySamples);
+        const gravityMagnitude = Math.hypot(gravityBaseline.x, gravityBaseline.y, gravityBaseline.z);
+        const gravityMagnitudeStdDev = Math.sqrt(
+          calibration.gravitySamples.reduce((sum, sample) => {
+            const sampleMagnitude = Math.hypot(sample.x, sample.y, sample.z);
+            return sum + (sampleMagnitude - gravityMagnitude) ** 2;
+          }, 0) / calibration.gravitySamples.length
+        );
+        if (gravityMagnitude < 7 || gravityMagnitude > 12 || gravityMagnitudeStdDev > 1) {
+          vbtCalibrationRef.current = null;
+          if (vbtCalibrationTimeoutRef.current !== null) {
+            window.clearTimeout(vbtCalibrationTimeoutRef.current);
+            vbtCalibrationTimeoutRef.current = null;
+          }
+          setVbtCalibrating(false);
+          setVbtSensorError('Kalibrasi gagal. Tahan HP diam pada barbel lalu coba lagi.');
+          return;
+        }
+
+        vbtGravityBaselineRef.current = gravityBaseline;
+        vbtGravityAxisRef.current = {
+          x: gravityBaseline.x / gravityMagnitude,
+          y: gravityBaseline.y / gravityMagnitude,
+          z: gravityBaseline.z / gravityMagnitude,
+        };
+        vbtLinearBaselineRef.current = calibration.linearSamples.length >= 30
+          ? averageVector(calibration.linearSamples)
+          : null;
+        const calibrationDurationMs = calibration.sampleTimestamps.at(-1)! - calibration.sampleTimestamps[0];
+        const sampleRateHz = calibrationDurationMs > 0
+          ? (calibration.sampleTimestamps.length - 1) / (calibrationDurationMs / 1000)
+          : 0;
+        const roundedSampleRate = Math.round(sampleRateHz);
+        vbtSampleRateRef.current = roundedSampleRate;
+        setVbtSampleRateHz(roundedSampleRate);
+        vbtSampleTimestampsRef.current = [];
+        vbtSampleEventsRef.current = 0;
+        vbtCalibrationRef.current = null;
+        if (vbtCalibrationTimeoutRef.current !== null) {
+          window.clearTimeout(vbtCalibrationTimeoutRef.current);
+          vbtCalibrationTimeoutRef.current = null;
+        }
+        setVbtCalibrating(false);
+        setVbtReady(true);
+        setVbtSensorError(null);
+        return;
+      }
+
+      if (!vbtRecording) return;
+
+      const gravityBaseline = vbtGravityBaselineRef.current;
+      const gravityAxis = vbtGravityAxisRef.current;
+      if (!gravityBaseline || !gravityAxis) return;
+
+      const now = performance.now();
+      const sampleTimestamps = vbtSampleTimestampsRef.current;
+      sampleTimestamps.push(now);
+      if (sampleTimestamps.length > 30) sampleTimestamps.shift();
+      vbtSampleEventsRef.current += 1;
+      if (sampleTimestamps.length >= 10 && vbtSampleEventsRef.current % 10 === 0) {
+        const windowDurationMs = sampleTimestamps.at(-1)! - sampleTimestamps[0];
+        if (windowDurationMs > 0) {
+          const sampleRateHz = Math.round((sampleTimestamps.length - 1) / (windowDurationMs / 1000));
+          vbtSampleRateRef.current = sampleRateHz;
+          setVbtSampleRateHz(sampleRateHz);
+        }
+      }
+
+      const accelerationBaseline = isMotionVector(linearAcceleration)
+        ? vbtLinearBaselineRef.current
+        : gravityBaseline;
+      const measuredAcceleration = isMotionVector(linearAcceleration)
+        ? linearAcceleration
+        : gravity;
+      const baseline = accelerationBaseline ?? { x: 0, y: 0, z: 0 };
+      const verticalAcceleration = (
+        (measuredAcceleration.x - baseline.x) * gravityAxis.x
+        + (measuredAcceleration.y - baseline.y) * gravityAxis.y
+        + (measuredAcceleration.z - baseline.z) * gravityAxis.z
+      );
+      let detection = vbtRepDetectionRef.current;
+
+      if (!detection) {
+        detection = {
+          phase: 'waiting',
+          lastTimestamp: now,
+          startTimestamp: now,
+          velocity: 0,
+          peakVelocity: 0,
+          displacement: 0,
+          previousAcceleration: verticalAcceleration,
+          positiveAccelerationSamples: 0,
+          lowVelocitySamples: 0,
+        };
+        vbtRepDetectionRef.current = detection;
+      }
+
+      if (detection.phase === 'waiting') {
+        detection.positiveAccelerationSamples = verticalAcceleration > 0.7
+          ? detection.positiveAccelerationSamples + 1
+          : 0;
+        if (detection.positiveAccelerationSamples < 2) {
+          detection.previousAcceleration = verticalAcceleration;
+          detection.lastTimestamp = now;
+          return;
+        }
+
+        const sampleIntervalMs = event.interval > 0 ? Math.min(event.interval, 100) : 1000 / 60;
+        detection.phase = 'lifting';
+        detection.startTimestamp = now - sampleIntervalMs;
+        detection.lastTimestamp = now - sampleIntervalMs;
+        detection.velocity = 0;
+        detection.peakVelocity = 0;
+        detection.displacement = 0;
+        detection.lowVelocitySamples = 0;
+      }
+
+      const elapsedMs = detection.lastTimestamp === null ? 0 : now - detection.lastTimestamp;
+      if (elapsedMs <= 0 || elapsedMs > 150) {
+        vbtRepDetectionRef.current = {
+          phase: 'waiting',
+          lastTimestamp: now,
+          startTimestamp: now,
+          velocity: 0,
+          peakVelocity: 0,
+          displacement: 0,
+          previousAcceleration: verticalAcceleration,
+          positiveAccelerationSamples: 0,
+          lowVelocitySamples: 0,
+        };
+        setVbtSensorError('Data sensor terputus sesaat. Rep direset agar hasil tidak dihitung dari sampel yang hilang.');
+        return;
+      }
+
+      const dt = elapsedMs / 1000;
+      const previousAcceleration = detection.previousAcceleration;
+      const averageAcceleration = (previousAcceleration + verticalAcceleration) / 2;
+      detection.velocity = Math.max(0, detection.velocity + averageAcceleration * dt);
+      detection.peakVelocity = Math.max(detection.peakVelocity, detection.velocity);
+      detection.displacement += detection.velocity * dt;
+      detection.previousAcceleration = verticalAcceleration;
+      detection.lastTimestamp = now;
+      setLiveConcentricVelocity(+detection.velocity.toFixed(2));
+
+      const durationMs = now - detection.startTimestamp;
+      detection.lowVelocitySamples = detection.velocity < 0.12 && verticalAcceleration < 0.5
+        ? detection.lowVelocitySamples + 1
+        : 0;
+      if (durationMs < 500 || (detection.lowVelocitySamples < 8 && durationMs < 4000)) return;
+
+      const meanVelocity = detection.displacement / (durationMs / 1000);
+      const peakVelocity = detection.peakVelocity;
+      vbtRepDetectionRef.current = {
+        phase: 'waiting',
+        lastTimestamp: now,
+        startTimestamp: now,
+        velocity: 0,
+        peakVelocity: 0,
+        displacement: 0,
+        previousAcceleration: 0,
+        positiveAccelerationSamples: 0,
+        lowVelocitySamples: 0,
+      };
+
+      if (meanVelocity < 0.05 || peakVelocity < 0.1 || meanVelocity > 5 || peakVelocity > 10) {
+        setLiveConcentricVelocity(0);
+        setVbtSensorError('Estimasi gerak tidak masuk batas yang masuk akal. Pastikan HP terpasang kuat dan ulangi setelah kalibrasi.');
+        return;
+      }
+
+      const reps = vbtRepsRef.current;
+      const fastestVelocity = Math.max(meanVelocity, ...reps.map((rep) => rep.meanVelocity));
+      const velocityLoss = +(((fastestVelocity - meanVelocity) / fastestVelocity) * 100).toFixed(1);
+      const isWarning = velocityLoss >= vbtCutoffPercent;
+      const newRep: VBTRepData = {
+        repNumber: reps.length + 1,
+        meanVelocity: +meanVelocity.toFixed(2),
+        peakVelocity: +peakVelocity.toFixed(2),
+        velocityLoss,
+        concentricDurationMs: Math.round(durationMs),
+        quality: isWarning ? 'Warning' : 'Optimal',
+      };
+
+      vbtRepsRef.current = [...reps, newRep];
+      setCurrentVBTSetReps(vbtRepsRef.current);
+      setLiveConcentricVelocity(newRep.meanVelocity);
+      setVbtSensorError(vbtSampleRateRef.current > 0 && vbtSampleRateRef.current < 20
+        ? 'Frekuensi sensor rendah; hasil kecepatan kemungkinan kurang stabil.'
+        : null);
+      if (soundEnabledRef.current) {
+        if (isWarning) sportsAudio.playFatigueWarningBuzz();
+        else sportsAudio.playRepSuccessBeep();
+      }
+    };
+
+    window.addEventListener('devicemotion', handleVBTMotion);
+    return () => window.removeEventListener('devicemotion', handleVBTMotion);
+  }, [activeModule, vbtCalibrating, vbtRecording, vbtSensorActive, vbtCutoffPercent]);
+
+  useEffect(() => () => {
+    if (vbtCalibrationTimeoutRef.current !== null) {
+      window.clearTimeout(vbtCalibrationTimeoutRef.current);
+    }
+  }, []);
 
   const startCamera = async () => {
     setCameraError(null);
@@ -132,7 +485,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        await videoRef.current.play();
       }
     } catch (err: any) {
       console.warn('Camera error:', err);
@@ -157,118 +510,105 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   const requestSensorPermission = async () => {
     if (typeof window === 'undefined') return;
 
-    // Check iOS 13+ permission model
-    if (
-      typeof (DeviceMotionEvent as any) !== 'undefined' &&
-      typeof (DeviceMotionEvent as any).requestPermission === 'function'
-    ) {
+    if (typeof DeviceMotionEvent === 'undefined') {
+      setToastMessage('Browser ini tidak menyediakan sensor gerak. Gunakan kamera dengan penandaan manual.');
+      return;
+    }
+
+    const motionEvent = DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
+    };
+    if (typeof motionEvent.requestPermission === 'function') {
       try {
-        const response = await (DeviceMotionEvent as any).requestPermission();
+        const response = await motionEvent.requestPermission();
         if (response === 'granted') {
-          activateSensorListener();
+          setSensorActive(true);
         } else {
           setToastMessage('Izin sensor gerak HP ditolak.');
         }
       } catch (err) {
         console.warn('Motion permission error:', err);
-        activateSensorListener();
+        setToastMessage('Sensor gerak tidak dapat diakses. Pastikan izin sensor diberikan dan halaman dibuka melalui HTTPS.');
       }
     } else {
-      activateSensorListener();
+      setSensorActive(true);
     }
-  };
-
-  const activateSensorListener = () => {
-    setSensorActive(true);
-    setSensorAvailable(true);
-
-    const handleMotion = (event: DeviceMotionEvent) => {
-      const acc = event.acceleration || event.accelerationIncludingGravity;
-      if (!acc) return;
-
-      const z = acc.z ?? 9.81;
-      const x = acc.x ?? 0;
-      const y = acc.y ?? 0;
-      const mag = Math.sqrt(x * x + y * y + z * z) / 9.81; // in G
-
-      setCurrentAccelZ(+z.toFixed(2));
-      setCurrentAccelMag(+mag.toFixed(2));
-
-      // Automated jump phase state machine
-      if (jumpPhase === 'ready' && mag < 0.35) {
-        // Freefall detected (Takeoff!)
-        setJumpPhase('airborne');
-        setTakeoffTimestamp(performance.now());
-        if (soundEnabled) sportsAudio.playTakeoffBeep();
-      } else if (jumpPhase === 'airborne' && mag > 2.4) {
-        // Impact spike detected (Landing!)
-        if (takeoffTimestamp) {
-          const flightMs = Math.round(performance.now() - takeoffTimestamp);
-          if (flightMs >= 200 && flightMs <= 1100) {
-            processJumpResults(flightMs, 'Sensor Akselerometer HP');
-          }
-        }
-        setJumpPhase('landed');
-        if (soundEnabled) sportsAudio.playLandingBeep();
-      }
-    };
-
-    window.addEventListener('devicemotion', handleMotion);
-    return () => {
-      window.removeEventListener('devicemotion', handleMotion);
-    };
   };
 
   // Process Jump Results from Flight Time
   const processJumpResults = (flightMs: number, method: JumpMeasurementRecord['method']) => {
     setMeasuredFlightTimeMs(flightMs);
     const { heightCm, takeoffVelocity } = calculateJumpFromFlightTime(flightMs);
-    const power = calculateSayersPeakPower(heightCm, currentAthlete.weight || 70);
+    const power = calculateSayersPeakPower(heightCm, athleteRef.current?.weight || 70);
 
     setMeasuredJumpHeightCm(heightCm);
     setMeasuredTakeoffVel(takeoffVelocity);
     setMeasuredPeakPowerWatts(power);
   };
 
-  // Manual & Simulation Jump Triggers
+  // Manual jump timing controls
   const handleStartJumpDetection = () => {
+    jumpPhaseRef.current = 'ready';
     setJumpPhase('ready');
     setMeasuredFlightTimeMs(0);
     setMeasuredJumpHeightCm(0);
-    setTakeoffTimestamp(null);
+    setMeasuredTakeoffVel(0);
+    setMeasuredPeakPowerWatts(0);
+    takeoffTimestampRef.current = null;
+    setToastMessage(null);
   };
 
   const handleManualTakeoff = () => {
+    if (jumpPhaseRef.current !== 'ready') return;
+    takeoffTimestampRef.current = performance.now();
+    jumpPhaseRef.current = 'airborne';
     setJumpPhase('airborne');
-    setTakeoffTimestamp(performance.now());
     if (soundEnabled) sportsAudio.playTakeoffBeep();
   };
 
   const handleManualLanding = () => {
-    if (!takeoffTimestamp) return;
-    const flightMs = Math.round(performance.now() - takeoffTimestamp);
+    const takeoffAt = takeoffTimestampRef.current;
+    if (takeoffAt === null) return;
+    const flightMs = Math.round(performance.now() - takeoffAt);
+    takeoffTimestampRef.current = null;
+    if (flightMs < 200 || flightMs > 1100) {
+      jumpPhaseRef.current = 'idle';
+      setJumpPhase('idle');
+      setToastMessage('Waktu lompatan tidak valid. Ulangi tes dan tandai take-off/landing dengan tepat.');
+      return;
+    }
+    jumpPhaseRef.current = 'landed';
     setJumpPhase('landed');
     processJumpResults(flightMs, jumpMethod === 'camera' ? 'Kamera (Flight Time)' : 'Sensor Akselerometer HP');
     if (soundEnabled) sportsAudio.playLandingBeep();
   };
 
-  const handleSimulateRealisticJump = () => {
-    handleStartJumpDetection();
-    setTimeout(() => {
-      handleManualTakeoff();
-      // Realistic CMJ flight time for elite/sub-elite athletes: 720ms - 780ms (~63cm - 75cm)
-      const flightDuration = Math.round(710 + Math.random() * 80);
-      setTimeout(() => {
-        handleManualLanding();
-      }, flightDuration);
-    }, 800);
+  const resetJumpResult = () => {
+    jumpPhaseRef.current = 'idle';
+    takeoffTimestampRef.current = null;
+    setJumpPhase('idle');
+    setMeasuredFlightTimeMs(0);
+    setMeasuredJumpHeightCm(0);
+    setMeasuredTakeoffVel(0);
+    setMeasuredPeakPowerWatts(0);
+    setToastMessage(null);
+  };
+
+  const handleJumpMethodChange = (method: 'camera' | 'sensor') => {
+    if (method !== jumpMethod) resetJumpResult();
+    setJumpMethod(method);
+  };
+
+  const handleJumpTypeChange = (nextJumpType: JumpMeasurementRecord['jumpType']) => {
+    if (nextJumpType !== jumpType) resetJumpResult();
+    setJumpType(nextJumpType);
   };
 
   const handleSaveJumpRecord = () => {
-    if (!measuredJumpHeightCm || !measuredFlightTimeMs) return;
+    if (!currentAthlete || !measuredJumpHeightCm || !measuredFlightTimeMs) return;
 
     const newRecord: JumpMeasurementRecord = {
-      id: `jmp-${Date.now().toString().slice(-4)}`,
+      id: createRecordId('jmp'),
       athleteId: currentAthlete.id,
       date: new Date().toISOString().slice(0, 10),
       jumpType,
@@ -280,7 +620,6 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       notes: `Pengujian ${jumpType} metode ${jumpMethod}. Pendaratan simetris.`,
     };
 
-    setJumpHistory((prev) => [newRecord, ...prev]);
     if (onAddJumpRecord) onAddJumpRecord(newRecord);
     if (onUpdateGoalCurrentValue && measuredJumpHeightCm > 0) {
       onUpdateGoalCurrentValue(currentAthlete.id, 'jump_height', measuredJumpHeightCm);
@@ -289,49 +628,99 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // VBT Rep Simulator & Tracker
-  const handleAddVBTRep = (manualVelocity?: number) => {
-    const repNum = currentVBTSetReps.length + 1;
-    // Base velocity around 0.82 m/s, naturally declining by ~0.04 m/s per rep
-    const vel = manualVelocity !== undefined
-      ? manualVelocity
-      : +(Math.max(0.38, 0.84 - (repNum - 1) * 0.042 + (Math.random() * 0.03 - 0.015))).toFixed(2);
+  const requestVBTSensorPermission = async () => {
+    if (typeof DeviceMotionEvent === 'undefined') {
+      setVbtSensorError('Browser ini tidak menyediakan sensor gerak. Coba browser modern di ponsel.');
+      return;
+    }
 
-    const peakVel = +(vel * 1.35).toFixed(2);
-    const power = Math.round(vbtLoadKg * 9.81 * vel);
-
-    // Calculate velocity loss relative to best rep in set
-    const fastestSoFar = currentVBTSetReps.length === 0
-      ? vel
-      : Math.max(...currentVBTSetReps.map((r) => r.meanVelocity), vel);
-
-    const loss = fastestSoFar > 0 ? +(((fastestSoFar - vel) / fastestSoFar) * 100).toFixed(1) : 0;
-    const isWarning = loss >= vbtCutoffPercent;
-
-    const newRep: VBTRepData = {
-      repNumber: repNum,
-      meanVelocity: vel,
-      peakVelocity: peakVel,
-      velocityLoss: loss,
-      peakPowerWatts: power,
-      concentricDurationMs: Math.round(350 + (1.2 - vel) * 300),
-      quality: isWarning ? 'Warning' : 'Optimal',
+    const motionEvent = DeviceMotionEvent as typeof DeviceMotionEvent & {
+      requestPermission?: () => Promise<'granted' | 'denied' | 'default'>;
     };
-
-    setCurrentVBTSetReps((prev) => [...prev, newRep]);
-    setLiveConcentricVelocity(vel);
-
-    if (soundEnabled) {
-      if (isWarning) {
-        sportsAudio.playFatigueWarningBuzz();
-      } else {
-        sportsAudio.playRepSuccessBeep();
+    if (typeof motionEvent.requestPermission === 'function') {
+      try {
+        const permission = await motionEvent.requestPermission();
+        if (permission !== 'granted') {
+          setVbtSensorError('Izin sensor ditolak. Izinkan akses Motion & Orientation di pengaturan browser.');
+          return;
+        }
+      } catch (error) {
+        console.error('VBT motion permission error:', error);
+        setVbtSensorError('Tidak dapat meminta izin sensor gerak. Pastikan halaman dibuka melalui HTTPS.');
+        return;
       }
     }
+
+    setVbtSensorError(null);
+    setVbtSensorActive(true);
   };
 
-  const handleFinishVBTSet = () => {
-    if (currentVBTSetReps.length === 0) return;
+  const startVBTCalibration = () => {
+    if (!vbtMountConfirmed || !vbtAreaClear || vbtLoadKg < 1 || vbtLoadKg > 300) return;
+    vbtCalibrationRef.current = { gravitySamples: [], linearSamples: [], sampleTimestamps: [] };
+    vbtGravityAxisRef.current = null;
+    vbtGravityBaselineRef.current = null;
+    vbtLinearBaselineRef.current = null;
+    setVbtReady(false);
+    setVbtSampleRateHz(0);
+    vbtSampleRateRef.current = 0;
+    setVbtCalibrating(true);
+    setVbtSensorError(null);
+
+    if (vbtCalibrationTimeoutRef.current !== null) {
+      window.clearTimeout(vbtCalibrationTimeoutRef.current);
+    }
+    vbtCalibrationTimeoutRef.current = window.setTimeout(() => {
+      const calibrationPending = vbtCalibrationRef.current !== null;
+      vbtCalibrationRef.current = null;
+      vbtCalibrationTimeoutRef.current = null;
+      if (!calibrationPending) return;
+      setVbtCalibrating(false);
+      setVbtSensorError('Tidak ada data sensor yang diterima. Periksa izin sensor dan coba lagi.');
+    }, 5000);
+  };
+
+  const stopVBTSensor = () => {
+    if (vbtCalibrationTimeoutRef.current !== null) {
+      window.clearTimeout(vbtCalibrationTimeoutRef.current);
+      vbtCalibrationTimeoutRef.current = null;
+    }
+    vbtCalibrationRef.current = null;
+    vbtGravityAxisRef.current = null;
+    vbtGravityBaselineRef.current = null;
+    vbtLinearBaselineRef.current = null;
+    vbtRepDetectionRef.current = null;
+    setVbtSensorActive(false);
+    setVbtCalibrating(false);
+    setVbtReady(false);
+    setVbtRecording(false);
+    setVbtSampleRateHz(0);
+    vbtSampleRateRef.current = 0;
+  };
+
+  const startVBTRecording = () => {
+    if (!vbtReady || !vbtMountConfirmed || !vbtAreaClear || vbtLoadKg < 1 || vbtLoadKg > 300) return;
+    vbtRepsRef.current = [];
+    vbtRepDetectionRef.current = null;
+    vbtSampleTimestampsRef.current = [];
+    vbtSampleEventsRef.current = 0;
+    setCurrentVBTSetReps([]);
+    setLiveConcentricVelocity(0);
+    setVbtSensorError(null);
+    setVbtRecording(true);
+  };
+
+  const resetVBTSet = () => {
+    vbtRepsRef.current = [];
+    vbtRepDetectionRef.current = null;
+    setCurrentVBTSetReps([]);
+    setLiveConcentricVelocity(0);
+    setVbtSensorError(null);
+  };
+
+  const handleFinishVBTSet = async () => {
+    if (!currentAthlete || currentVBTSetReps.length === 0) return;
+    setVbtRecording(false);
 
     const avgVel = +(
       currentVBTSetReps.reduce((acc, curr) => acc + curr.meanVelocity, 0) / currentVBTSetReps.length
@@ -340,10 +729,12 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     const est1RM = estimate1RMFromVBT(vbtLoadKg, avgVel);
     const zoneInfo = getVBTZone(avgVel);
 
+    const recordedAt = new Date().toISOString();
     const sessionRecord: VBTSessionRecord = {
-      id: `vbt-${Date.now().toString().slice(-4)}`,
+      id: createRecordId('vbt'),
       athleteId: currentAthlete.id,
-      date: new Date().toISOString().slice(0, 10),
+      date: recordedAt.slice(0, 10),
+      recordedAt,
       exercise: vbtExercise,
       loadKg: vbtLoadKg,
       reps: currentVBTSetReps,
@@ -351,18 +742,54 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       estimated1RM: est1RM,
       targetZone: zoneInfo.zone,
       velocityLossCutoffPercent: vbtCutoffPercent,
-      notes: `Set ${currentVBTSetReps.length} repetisi selesai. Rata-rata kecepatan ${avgVel} m/s (${zoneInfo.zone}).`,
+      measurementMethod: 'phone_accelerometer_estimate',
+      measurementConfidence: 'unvalidated_estimate',
+      sensorSampleRateHz: vbtSampleRateHz,
+      phoneMount: 'HP terpasang kuat pada barbel, sumbu sensor dikalibrasi searah lintasan gerak',
+      testProtocol: `${vbtExercise}; ${vbtLoadKg} kg; ${vbtProtocolNote}; pemasangan HP aman dikonfirmasi; area angkat aman; sensor dikalibrasi saat diam`,
+      notes: `Estimasi akselerometer HP yang belum divalidasi antarperangkat; laju sampel sekitar ${vbtSampleRateHz} Hz. ${currentVBTSetReps.length} repetisi; rata-rata ${avgVel} m/s (${zoneInfo.zone}).`,
     };
 
-    setVbtHistory((prev) => [sessionRecord, ...prev]);
-    if (onAddVBTRecord) onAddVBTRecord(sessionRecord);
+    setVbtSaveStatus('saving');
+    let saveDestination: 'cloud' | 'local' = 'local';
+    let saveFailed = false;
+    if (onAddVBTRecord) {
+      try {
+        saveDestination = await onAddVBTRecord(sessionRecord);
+      } catch {
+        saveDestination = 'local';
+        saveFailed = true;
+        setToastMessage('Set tersimpan lokal, tetapi cloud gagal. Periksa koneksi atau masuk kembali.');
+      }
+    }
+    setVbtSaveStatus(saveFailed ? 'error' : saveDestination);
     if (onUpdateGoalCurrentValue && avgVel > 0) {
       onUpdateGoalCurrentValue(currentAthlete.id, 'vbt_velocity', avgVel);
     }
+    vbtRepsRef.current = [];
+    vbtRepDetectionRef.current = null;
     setCurrentVBTSetReps([]);
     setLiveConcentricVelocity(0);
-    setToastMessage(`Set VBT ${vbtExercise} (${vbtLoadKg}kg) selesai! Estimasi 1RM: ${est1RM}kg.`);
-    setTimeout(() => setToastMessage(null), 4000);
+    if (saveFailed) {
+      setVbtSaveStatus('error');
+    } else if (saveDestination === 'local') {
+      setToastMessage(`Set tersimpan lokal. Estimasi 1RM: ${est1RM} kg; verifikasi sebelum digunakan untuk keputusan latihan.`);
+    } else {
+      setToastMessage(`Set VBT tersinkron. Estimasi 1RM: ${est1RM} kg; verifikasi sebelum digunakan untuk keputusan latihan.`);
+    }
+    setTimeout(() => setToastMessage(null), 6000);
+  };
+
+  const handleSelectAthlete = (athleteId: string) => {
+    if (currentVBTSetReps.length > 0) {
+      setToastMessage('Selesaikan atau reset set VBT sebelum mengganti atlet.');
+      return;
+    }
+
+    setSelectedAthleteId(athleteId);
+    jumpPhaseRef.current = 'idle';
+    takeoffTimestampRef.current = null;
+    resetJumpResult();
   };
 
   return (
@@ -391,7 +818,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
             Pengujian Biomekanik: VJ/CMJ & Velocity-Based Training (VBT)
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Pengukuran daya ledak lompatan Countermovement Jump (CMJ) & pemantauan kecepatan barbel menggunakan kamera HP dan sensor akselerometer.
+            Pengukuran lompatan dan estimasi kecepatan barbel menggunakan akselerometer HP.
           </p>
         </div>
 
@@ -399,7 +826,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         <div className="flex items-center gap-3">
           <select
             value={selectedAthleteId}
-            onChange={(e) => setSelectedAthleteId(e.target.value)}
+            onChange={(e) => handleSelectAthlete(e.target.value)}
             className="px-3 py-1.5 text-xs font-semibold bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none"
           >
             {athletes.map((a) => (
@@ -519,7 +946,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               <span className="text-xs font-semibold text-slate-500">Pilih Metode Deteksi:</span>
               <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-lg text-xs">
                 <button
-                  onClick={() => setJumpMethod('camera')}
+                  onClick={() => handleJumpMethodChange('camera')}
                   className={`px-3 py-1.5 font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
                     jumpMethod === 'camera'
                       ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
@@ -531,7 +958,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                 </button>
                 <button
                   onClick={() => {
-                    setJumpMethod('sensor');
+                    handleJumpMethodChange('sensor');
                     requestSensorPermission();
                   }}
                   className={`px-3 py-1.5 font-semibold rounded-md transition-colors cursor-pointer flex items-center gap-1.5 ${
@@ -550,7 +977,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               <span className="text-xs text-slate-500">Jenis Tes:</span>
               <select
                 value={jumpType}
-                onChange={(e) => setJumpType(e.target.value as any)}
+                onChange={(e) => handleJumpTypeChange(e.target.value as JumpMeasurementRecord['jumpType'])}
                 className="px-2.5 py-1 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none"
               >
                 <option value="CMJ (Countermovement Jump)">CMJ (Countermovement Jump)</option>
@@ -572,7 +999,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                       <Camera className="w-4 h-4 text-emerald-600" />
-                      Kamera Deteksi Waktu Terbang (Flight-Time Tracking)
+                      Pratinjau Kamera & Penandaan Manual Waktu Terbang
                     </span>
                     <button
                       onClick={() => setCameraFacing(cameraFacing === 'user' ? 'environment' : 'user')}
@@ -591,14 +1018,22 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                       className="w-full h-full object-cover"
                     />
 
+                    {cameraActive && cameraError && (
+                      <div role="alert" className="absolute inset-x-3 bottom-3 rounded-lg bg-rose-950/90 p-3 text-xs text-rose-100">
+                        Kamera tidak dapat diakses: {cameraError}
+                      </div>
+                    )}
+
                     {/* Camera Offline Placeholder */}
                     {!cameraActive && (
                       <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-900/90 text-white space-y-3">
                         <Camera className="w-10 h-10 text-emerald-500 opacity-80" />
                         <div>
                           <h4 className="text-sm font-bold">Kamera Belum Aktif</h4>
-                          <p className="text-xs text-slate-400 mt-1 max-w-xs">
-                            Aktifkan kamera ponsel atau web untuk deteksi frame take-off dan landing secara optik.
+                          <p role={cameraError ? 'alert' : undefined} className="text-xs text-slate-400 mt-1 max-w-xs">
+                            {cameraError
+                              ? `Kamera tidak dapat diakses: ${cameraError}`
+                              : 'Kamera hanya menampilkan video. Tandai take-off dan landing secara manual, atau gunakan sensor gerak HP.'}
                           </p>
                         </div>
                         <button
@@ -672,24 +1107,14 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex items-center justify-between pt-1">
+                  {cameraActive && (
                     <button
-                      onClick={handleSimulateRealisticJump}
-                      className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline cursor-pointer flex items-center gap-1 font-semibold"
+                      onClick={() => setCameraActive(false)}
+                      className="text-xs text-slate-500 hover:text-rose-600 cursor-pointer"
                     >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Simulasi Otomatis Gerak Lompatan Atlet (740ms)</span>
+                      Matikan Kamera
                     </button>
-
-                    {cameraActive && (
-                      <button
-                        onClick={() => setCameraActive(false)}
-                        className="text-xs text-slate-500 hover:text-rose-600 cursor-pointer"
-                      >
-                        Matikan Kamera
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               ) : (
                 /* SENSOR ACCELEROMETER INTERFACE */
@@ -716,21 +1141,22 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                     </div>
 
                     <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
-                      Letakkan ponsel di sabuk pinggang atlet. Sensor akan mendeteksi fase countermovement, fase bebas gravitasi (0G saat takeoff), dan lonjakan landing.
+                      Pasang ponsel dengan aman di pinggang atlet. Izinkan sensor, lalu mulai deteksi sebelum melompat. Hasil tetap perlu diverifikasi karena akurasi bergantung pada perangkat dan pemasangan.
                     </p>
 
                     <div className="flex items-center justify-center gap-3">
                       <button
+                        onClick={requestSensorPermission}
+                        className="px-4 py-2 text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg cursor-pointer"
+                      >
+                        {sensorActive ? 'Sensor Aktif' : 'Aktifkan Sensor'}
+                      </button>
+                      <button
                         onClick={handleStartJumpDetection}
+                        disabled={!sensorActive}
                         className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg cursor-pointer"
                       >
                         Mulai Deteksi Sensor
-                      </button>
-                      <button
-                        onClick={handleSimulateRealisticJump}
-                        className="px-3.5 py-2 text-xs font-semibold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 cursor-pointer"
-                      >
-                        Simulasi Sensor Lompat
                       </button>
                     </div>
                   </div>
@@ -872,6 +1298,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               <select
                 value={vbtExercise}
                 onChange={(e) => setVbtExercise(e.target.value)}
+                disabled={vbtRecording}
                 className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
               >
                 <option value="Back Squat">Back Squat</option>
@@ -888,10 +1315,12 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               </label>
               <input
                 type="number"
-                min="20"
+                min="1"
                 max="300"
+                step="0.5"
                 value={vbtLoadKg}
-                onChange={(e) => setVbtLoadKg(parseInt(e.target.value) || 20)}
+                onChange={(e) => setVbtLoadKg(e.target.value === '' ? 0 : Number(e.target.value))}
+                disabled={vbtRecording}
                 className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono"
               />
             </div>
@@ -903,6 +1332,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               <select
                 value={vbtCutoffPercent}
                 onChange={(e) => setVbtCutoffPercent(parseInt(e.target.value))}
+                disabled={vbtRecording}
                 className="w-full px-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-medium"
               >
                 <option value="10">10% - Daya Ledak Murni (Neuromuskular Segar)</option>
@@ -910,6 +1340,52 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                 <option value="20">20% - Hipertrofi / Kekuatan Dinamis</option>
                 <option value="30">30% - Ketahanan Beban Tinggi</option>
               </select>
+            </div>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <label htmlFor="vbt-protocol-note" className="mb-1 block text-xs font-semibold text-slate-700 dark:text-slate-300">
+              Standar rentang gerak / tempo (catatan sesi)
+            </label>
+            <input
+              id="vbt-protocol-note"
+              type="text"
+              maxLength={120}
+              value={vbtProtocolNote}
+              onChange={(event) => setVbtProtocolNote(event.target.value)}
+              disabled={vbtRecording}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+            />
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+            <h3 className="font-bold">Protokol keselamatan dan konsistensi pengukuran</h3>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              <li>Pasang HP kokoh pada barbel dengan holder/strap; jangan pegang HP saat mengangkat.</li>
+              <li>Gunakan gerakan, rentang gerak, posisi sensor, dan beban yang sama saat membandingkan sesi.</li>
+              <li>Letakkan barbel diam sebelum kalibrasi. Berhenti jika holder longgar, nyeri, atau gerak tidak aman.</li>
+              <li>Nilai adalah estimasi eksperimental akselerometer, belum divalidasi antarperangkat; jangan gunakan sendirian untuk resep beban atau keputusan klinis.</li>
+            </ol>
+            <div className="mt-3 space-y-2">
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={vbtMountConfirmed}
+                  onChange={(event) => setVbtMountConfirmed(event.target.checked)}
+                  disabled={vbtRecording}
+                  className="mt-0.5"
+                />
+                <span>HP terpasang kencang pada barbel dan tidak dipegang.</span>
+              </label>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={vbtAreaClear}
+                  onChange={(event) => setVbtAreaClear(event.target.checked)}
+                  disabled={vbtRecording}
+                  className="mt-0.5"
+                />
+                <span>Area dan teknik angkatan aman; beban diisi dengan benar.</span>
+              </label>
             </div>
           </div>
 
@@ -923,7 +1399,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                   Kecepatan Angkatan Konsentrik (Mean Velocity)
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Diukur menggunakan sensor barbel / kamera gerak optik.
+                  Estimasi langsung dari akselerometer HP yang dipasang kuat pada barbel.
                 </p>
               </div>
 
@@ -942,37 +1418,90 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
                 {liveConcentricVelocity > 0 && (
                   <div className="text-[11px] text-slate-500 font-mono">
-                    Intensitas Efektif: {getVBTZone(liveConcentricVelocity).intensityPct1RM}
+                    Zona intensitas indikatif: {getVBTZone(liveConcentricVelocity).intensityPct1RM}
                   </div>
                 )}
               </div>
 
               {/* Rep Trigger Controls */}
               <div className="space-y-2 pt-2">
+                <div className={`rounded-lg border p-3 text-left text-xs ${
+                  vbtSensorError
+                    ? 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200'
+                    : 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                }`}>
+                  <div className="font-bold">
+                    Status sensor: {vbtSensorError ? 'Perlu diperiksa' : vbtRecording ? 'Merekam repetisi' : vbtCalibrating ? 'Kalibrasi' : vbtReady ? 'Siap' : vbtSensorActive ? 'Aktif' : 'Belum aktif'}
+                  </div>
+                  {vbtSampleRateHz > 0 && (
+                    <div className={`mt-1 font-mono ${vbtSampleRateHz < 20 ? 'text-rose-700 dark:text-rose-300' : ''}`}>
+                      Frekuensi data sensor: {vbtSampleRateHz} Hz {vbtSampleRateHz < 20 ? '(rendah)' : '(akurasi tetap belum tervalidasi)'}
+                    </div>
+                  )}
+                  {vbtReady && vbtSampleRateHz > 0 && vbtSampleRateHz < 20 && (
+                    <p role="alert" className="mt-1 font-semibold text-rose-700 dark:text-rose-300">
+                      Kualitas sampel rendah. Pengukuran ini sebaiknya tidak dipakai untuk membandingkan performa.
+                    </p>
+                  )}
+                  <p className="mt-1">
+                    Pasang HP dengan aman dan searah pada barbel. Jauhkan tangan dari ponsel saat mengangkat.
+                    Estimasi akselerometer bukan pengganti alat ukur laboratorium.
+                  </p>
+                  {vbtSensorError && <p role="alert" className="mt-1 font-semibold">{vbtSensorError}</p>}
+                </div>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <button
+                    onClick={vbtSensorActive ? stopVBTSensor : requestVBTSensorPermission}
+                    disabled={vbtRecording}
+                    className="rounded-lg bg-slate-200 px-3 py-2 text-xs font-bold text-slate-800 disabled:opacity-40 dark:bg-slate-700 dark:text-white"
+                  >
+                    {vbtSensorActive ? 'Matikan Sensor' : '1. Aktifkan Sensor'}
+                  </button>
+                  <button
+                    onClick={startVBTCalibration}
+                    disabled={!vbtSensorActive || vbtCalibrating || vbtRecording || !vbtMountConfirmed || !vbtAreaClear || vbtLoadKg < 1 || vbtLoadKg > 300}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                  >
+                    {vbtCalibrating ? 'Tahan HP Diam...' : '2. Kalibrasi'}
+                  </button>
+                  <button
+                    onClick={startVBTRecording}
+                    disabled={!vbtReady || vbtRecording || !vbtMountConfirmed || !vbtAreaClear || vbtLoadKg < 1 || vbtLoadKg > 300}
+                    className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                  >
+                    3. Mulai Rekam Set
+                  </button>
+                </div>
                 <button
-                  onClick={() => handleAddVBTRep()}
-                  className="w-full py-3 px-4 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-sm flex items-center justify-center gap-2"
+                  onClick={handleFinishVBTSet}
+                  disabled={!vbtRecording || currentVBTSetReps.length === 0}
+                  className="w-full rounded-lg bg-slate-900 px-4 py-3 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900"
                 >
-                  <Plus className="w-4 h-4" />
-                  <span>+ Catat 1 Repetisi Angkatan (Barbell Rep)</span>
+                  Selesaikan Set & Simpan ({currentVBTSetReps.length} reps)
                 </button>
 
                 <div className="flex gap-2">
                   <button
-                    onClick={handleFinishVBTSet}
-                    disabled={currentVBTSetReps.length === 0}
-                    className="flex-1 py-2 px-3 text-xs font-bold bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 disabled:opacity-40 rounded-lg cursor-pointer"
-                  >
-                    Selesaikan Set ({currentVBTSetReps.length} Reps)
-                  </button>
-                  <button
-                    onClick={() => setCurrentVBTSetReps([])}
-                    disabled={currentVBTSetReps.length === 0}
+                    onClick={resetVBTSet}
+                    disabled={currentVBTSetReps.length === 0 || vbtRecording}
                     className="py-2 px-3 text-xs text-slate-500 hover:text-rose-600 rounded-lg cursor-pointer"
                   >
                     Reset Set
                   </button>
                 </div>
+                {vbtSaveStatus !== 'idle' && (
+                  <p className={`text-left text-[11px] font-semibold ${
+                    vbtSaveStatus === 'error'
+                      ? 'text-rose-600'
+                      : vbtSaveStatus === 'saving'
+                        ? 'text-amber-600'
+                        : vbtSaveStatus === 'cloud'
+                          ? 'text-emerald-600'
+                          : 'text-slate-500'
+                  }`}>
+                    Penyimpanan: {vbtSaveStatus === 'saving' ? 'menyimpan...' : vbtSaveStatus === 'cloud' ? 'tersinkron ke cloud' : vbtSaveStatus === 'error' ? 'gagal ke cloud; tersimpan lokal' : 'lokal di perangkat'}
+                  </p>
+                )}
               </div>
 
               <div className="text-[11px] text-slate-500 text-left pt-2 border-t border-slate-100 dark:border-slate-800">
@@ -994,7 +1523,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
                 {currentVBTSetReps.length > 0 && (
                   <div className="text-right font-mono text-xs">
-                    <span className="text-slate-400">Est. 1RM:</span>{' '}
+                    <span className="text-slate-400">Estimasi kasar 1RM:</span>{' '}
                     <span className="font-bold text-emerald-600">
                       {estimate1RMFromVBT(
                         vbtLoadKg,
@@ -1011,7 +1540,11 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                 <div className="py-12 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-center space-y-2">
                   <Activity className="w-8 h-8 text-slate-400 mx-auto" />
                   <p className="text-xs text-slate-500">
-                    Belum ada repetisi. Klik "+ Catat 1 Repetisi Angkatan" untuk memulai set VBT.
+                    {!vbtReady
+                      ? 'Aktifkan sensor dan kalibrasi HP saat diam untuk memulai.'
+                      : vbtRecording
+                        ? 'Lakukan angkatan konsentrik dengan HP terpasang kuat; repetisi akan direkam otomatis.'
+                        : 'Mulai rekam set agar repetisi dan kecepatan terbaca otomatis.'}
                   </p>
                 </div>
               ) : (
@@ -1028,7 +1561,9 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                             Rep #{rep.repNumber}
                           </span>
                           <div className="flex items-center gap-3">
-                            <span className="text-slate-400 text-[11px]">Daya: {rep.peakPowerWatts}W</span>
+                            {rep.peakPowerWatts !== undefined && (
+                              <span className="text-slate-400 text-[11px]">Daya puncak: {rep.peakPowerWatts}W</span>
+                            )}
                             <span className="font-bold text-slate-900 dark:text-white tabular-nums">
                               {rep.meanVelocity.toFixed(2)} m/s
                             </span>
@@ -1086,6 +1621,39 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
             <h3 className="text-sm font-bold text-slate-900 dark:text-white">
               Log Riwayat Sesi Velocity-Based Training
             </h3>
+            <p className="text-xs text-slate-500">
+              Tren hanya menampilkan sesi estimasi sensor HP untuk atlet dan gerakan yang dipilih. Bandingkan dengan protokol yang sama.
+            </p>
+            {vbtTrendData.length >= 2 ? (
+              <div className="h-56 w-full" aria-label="Grafik tren mean velocity estimasi sensor HP">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={vbtTrendData} margin={{ top: 8, right: 12, bottom: 4, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.25} />
+                    <XAxis dataKey="session" tick={{ fontSize: 10 }} />
+                    <YAxis
+                      domain={['auto', 'auto']}
+                      tick={{ fontSize: 10 }}
+                      width={44}
+                      label={{ value: 'm/s', angle: -90, position: 'insideLeft', fontSize: 10 }}
+                    />
+                    <Tooltip formatter={(value) => [`${Number(value).toFixed(2)} m/s`, 'Estimasi mean velocity']} />
+                    <Line
+                      type="monotone"
+                      dataKey="meanVelocityAvg"
+                      name="Estimasi mean velocity"
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-300 p-4 text-xs text-slate-500 dark:border-slate-700">
+                Minimal dua sesi sensor HP pada gerakan yang sama diperlukan untuk menampilkan tren.
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
@@ -1097,8 +1665,9 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                     <th className="py-2.5 px-3 text-right">Beban</th>
                     <th className="py-2.5 px-3 text-center">Repetisi</th>
                     <th className="py-2.5 px-3 text-right">Kecepatan Rata2</th>
-                    <th className="py-2.5 px-3 text-right">Estimasi 1RM</th>
-                    <th className="py-2.5 px-3">Zona Target</th>
+                    <th className="py-2.5 px-3 text-right">Estimasi 1RM*</th>
+                    <th className="py-2.5 px-3">Zona indikatif</th>
+                    <th className="py-2.5 px-3">Kualitas data</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -1116,12 +1685,20 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                         <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{v.meanVelocityAvg} m/s</td>
                         <td className="py-2.5 px-3 text-right text-slate-700 dark:text-slate-300 font-bold">{v.estimated1RM} kg</td>
                         <td className="py-2.5 px-3 font-sans text-[11px] text-slate-500">{v.targetZone}</td>
+                        <td className="py-2.5 px-3 font-sans text-[11px] text-amber-700 dark:text-amber-300">
+                          {v.measurementMethod === 'phone_accelerometer_estimate'
+                            ? `Estimasi belum tervalidasi${v.sensorSampleRateHz ? ` · ${v.sensorSampleRateHz} Hz` : ''}`
+                            : 'Data contoh/lama (bukan hasil sensor HP)'}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            <p className="text-[11px] text-slate-500">
+              *Estimasi 1RM dan zona dihitung dari kecepatan sensor HP yang belum tervalidasi. Jangan jadikan satu-satunya dasar penentuan beban.
+            </p>
           </div>
 
         </div>

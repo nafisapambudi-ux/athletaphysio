@@ -15,6 +15,36 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
+    function ownsNewDocument() {
+      return isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid;
+    }
+
+    function ownsExistingDocument() {
+      return isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    function keepsOwnership() {
+      return ownsExistingDocument()
+        && request.resource.data.ownerId == request.auth.uid;
+    }
+
+    function isValidVBTSession(data) {
+      return data.loadKg is number
+        && data.loadKg > 0
+        && data.loadKg <= 500
+        && data.reps is list
+        && data.reps.size() > 0
+        && data.reps.size() <= 50
+        && data.meanVelocityAvg is number
+        && data.meanVelocityAvg > 0
+        && data.meanVelocityAvg <= 5
+        && data.estimated1RM is number
+        && data.estimated1RM > 0
+        && data.estimated1RM <= 1000;
+    }
+
     // User Profile (PII Protected)
     match /users/{userId} {
       allow get: if isSignedIn() && request.auth.uid == userId;
@@ -25,50 +55,66 @@ service cloud.firestore {
 
     // Athletes collection
     match /athletes/{athleteId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(athleteId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(athleteId) && ownsNewDocument();
+      allow update: if isValidId(athleteId) && keepsOwnership();
+      allow delete: if isValidId(athleteId) && ownsExistingDocument();
     }
 
     // Training Sessions
     match /trainingSessions/{sessionId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(sessionId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(sessionId) && ownsNewDocument();
+      allow update: if isValidId(sessionId) && keepsOwnership();
+      allow delete: if isValidId(sessionId) && ownsExistingDocument();
     }
 
     // Wellness Logs
     match /wellnessLogs/{logId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(logId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(logId) && ownsNewDocument();
+      allow update: if isValidId(logId) && keepsOwnership();
+      allow delete: if isValidId(logId) && ownsExistingDocument();
     }
 
     // Fitness Tests
     match /fitnessTests/{testId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(testId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(testId) && ownsNewDocument();
+      allow update: if isValidId(testId) && keepsOwnership();
+      allow delete: if isValidId(testId) && ownsExistingDocument();
     }
 
     // Jump Measurements
     match /jumpMeasurements/{jumpId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(jumpId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(jumpId) && ownsNewDocument();
+      allow update: if isValidId(jumpId) && keepsOwnership();
+      allow delete: if isValidId(jumpId) && ownsExistingDocument();
     }
 
     // VBT Sessions
     match /vbtSessions/{vbtId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(vbtId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(vbtId) && ownsNewDocument() && isValidVBTSession(request.resource.data);
+      allow update: if isValidId(vbtId) && keepsOwnership() && isValidVBTSession(request.resource.data);
+      allow delete: if isValidId(vbtId) && ownsExistingDocument();
     }
 
     // Pain Points
     match /painPoints/{painId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(painId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(painId) && ownsNewDocument();
+      allow update: if isValidId(painId) && keepsOwnership();
+      allow delete: if isValidId(painId) && ownsExistingDocument();
     }
 
     // Performance Goals
     match /performanceGoals/{goalId} {
-      allow list: if true;
-      allow get, create, update, delete: if isValidId(goalId);
+      allow list, get: if ownsExistingDocument();
+      allow create: if isValidId(goalId) && ownsNewDocument();
+      allow update: if isValidId(goalId) && keepsOwnership();
+      allow delete: if isValidId(goalId) && ownsExistingDocument();
     }
 
 
