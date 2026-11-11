@@ -5,7 +5,6 @@ import {
   Sun,
   Moon,
   Download,
-  Database,
   LogIn,
   LogOut,
   CheckCircle2,
@@ -17,6 +16,8 @@ import {
   Sparkles,
   ChevronRight,
   Flame,
+  LayoutDashboard,
+  Home,
 } from 'lucide-react';
 import { User } from 'firebase/auth';
 import { Athlete } from '../types/athlete';
@@ -75,8 +76,9 @@ export const Header: React.FC<HeaderProps> = ({
     };
   }, [alertOpen]);
   const navItems = [
-    { id: 'overview', label: 'Ringkasan' },
-    { id: 'analytics', label: 'Dashboard & Grafik' },
+    { id: 'home', label: 'Beranda', icon: Home },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'analytics', label: 'Analitik' },
     { id: 'jump_vbt', label: 'Uji VJ & VBT' },
     { id: 'goals', label: 'Target Performa' },
     { id: 'roster', label: 'Roster Atlet' },
@@ -96,7 +98,7 @@ export const Header: React.FC<HeaderProps> = ({
             <Activity className="w-5 h-5" />
           </div>
           <button 
-            onClick={() => setActiveTab('overview')}
+            onClick={() => setActiveTab('home')}
             className="text-left group cursor-pointer focus:outline-none"
           >
             <div className="flex items-center gap-2">
@@ -104,22 +106,21 @@ export const Header: React.FC<HeaderProps> = ({
                 AthletaPhysio
               </span>
               <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-400 rounded border border-emerald-300 dark:border-emerald-800/80">
-                <Database className="w-2.5 h-2.5" />
-                <span>Firestore DB</span>
+                <span>{demoMode ? 'DEMO PUBLIK' : currentUser ? 'FIRESTORE DB' : 'MODE LOKAL'}</span>
               </span>
             </div>
           </button>
         </div>
 
         {/* Zone 2: Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-1 xl:gap-2">
+        <nav className="hidden 2xl:flex items-center gap-0.5">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`px-3 py-1.5 text-xs font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer rounded-md ${
+                className={`inline-flex items-center gap-1.5 px-2 py-1.5 text-[11px] font-semibold whitespace-nowrap shrink-0 transition-colors cursor-pointer rounded-md ${
                   isActive
                     ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800/60'
@@ -418,19 +419,20 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       {/* Mobile Navigation Scrollbar */}
-      <div className="lg:hidden flex items-center gap-1 px-4 py-2 overflow-x-auto border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50">
+      <div className="2xl:hidden flex items-center gap-1 px-4 py-2 overflow-x-auto border-t border-slate-100 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {navItems.map((item) => {
           const isActive = activeTab === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`px-2.5 py-1 text-xs font-medium whitespace-nowrap shrink-0 rounded ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold whitespace-nowrap shrink-0 rounded-lg transition-colors ${
                 isActive
-                  ? 'text-emerald-700 dark:text-emerald-400 bg-white dark:bg-slate-800 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400'
+                  ? 'text-emerald-800 dark:text-emerald-300 bg-white dark:bg-slate-800 shadow-xs'
+                  : 'text-slate-600 hover:bg-white/70 dark:text-slate-400 dark:hover:bg-slate-800/60'
               }`}
             >
+              {item.icon && <item.icon className="h-3.5 w-3.5" />}
               {item.label}
             </button>
           );

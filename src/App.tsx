@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { HomePage } from './components/HomePage';
 import { AthleteOverview } from './components/AthleteOverview';
 import { AnalyticsDashboard } from './components/AnalyticsDashboard';
 import { JumpAndVBTTracker } from './components/JumpAndVBTTracker';
@@ -274,7 +275,7 @@ export default function App() {
   }, [currentUser, demoMode]);
 
   // Navigation tab state
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeTab, setActiveTab] = useState<string>('home');
 
   // Modal states
   const [quickLogOpen, setQuickLogOpen] = useState(false);
@@ -690,7 +691,7 @@ export default function App() {
 
       {/* Main Viewport Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {demoMode && (
+        {demoMode && activeTab !== 'home' && (
           <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
             Mode demo publik: data hanya tersimpan di browser perangkat ini dan tidak disinkronkan ke cloud.
           </div>
@@ -705,7 +706,15 @@ export default function App() {
             {localStorageError}
           </div>
         )}
-        {activeTab === 'overview' && (
+        {activeTab === 'home' && (
+          <HomePage
+            demoMode={demoMode}
+            onNavigateTab={setActiveTab}
+            onOpenQuickLog={() => openLogForAthlete()}
+          />
+        )}
+
+        {activeTab === 'dashboard' && (
           <AthleteOverview
             athletes={athletes}
             trainingSessions={trainingSessions}
@@ -874,9 +883,27 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4">
-            <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-mono">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-              Google Cloud Firestore Connected
+            <span className={`inline-flex items-center gap-1 text-[11px] font-mono ${
+              demoMode || !currentUser || cloudSyncError
+                ? 'text-slate-500 dark:text-slate-400'
+                : 'text-emerald-600 dark:text-emerald-400'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full inline-block ${
+                demoMode || !currentUser || cloudSyncError
+                  ? 'bg-slate-400'
+                  : isCloudSyncing
+                  ? 'bg-amber-500 animate-pulse'
+                  : 'bg-emerald-500'
+              }`} />
+              {demoMode
+                ? 'Data tersimpan di browser'
+                : cloudSyncError
+                ? 'Sinkronisasi bermasalah'
+                : isCloudSyncing
+                ? 'Menyinkronkan data'
+                : currentUser
+                ? 'Cloud aktif'
+                : 'Mode lokal'}
             </span>
             <span aria-hidden="true">·</span>
             <button

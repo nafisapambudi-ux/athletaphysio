@@ -9,6 +9,8 @@
 
 Aplikasi web modern pemantauan kondisi fisik, beban latihan (*workload*), evaluasi kebugaran terstandar, dan kesiapan tanding atlet berbasis prinsip *Sports Science* (Sains Olahraga).
 
+Halaman **Beranda** memperkenalkan tujuan platform, pengguna yang dituju, fitur utama, dan alur penggunaan. Buka **Dashboard** dari navigasi untuk masuk ke ringkasan kondisi tim dan fitur pemantauan.
+
 ---
 
 ## 🚀 Fitur Utama
