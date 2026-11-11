@@ -33,8 +33,8 @@ Halaman **Beranda** memperkenalkan tujuan platform, pengguna yang dituju, fitur 
   * Kecepatan lepas landas (*take-off velocity*): $v = 4.905 \times t$ (m/s).
   * Reactive Strength Index (RSI) untuk Drop Jump.
 * **Velocity-Based Training (VBT)**:
-  * Estimasi *Mean Concentric Velocity* (m/s) per repetisi dari akselerometer HP yang terpasang kuat pada barbel, dengan kalibrasi gravitasi saat HP diam dan pencatatan frekuensi sampel.
-  * Gauge menampilkan estimasi kecepatan saat fase angkatan berlangsung; mean velocity ditambahkan ke grafik setelah repetisi terdeteksi dan sesi disimpan melalui tombol **Selesaikan Set & Simpan**.
+  * Estimasi *Mean Concentric Velocity* (m/s) per repetisi dari akselerometer HP yang terpasang kuat pada barbel. Sebelum set, kalibrasi diam mengambil sampel orientasi gravitasi selama minimal 1,5 detik dan menetapkan titik nol gerak relatif.
+  * Kalibrasi ini bukan pengukuran ketinggian absolut: akselerometer HP tidak dapat menentukan tinggi/posisi absolut saat diam. Gauge menampilkan estimasi sesaat saat rep berlangsung, lalu menahan hasil rata-rata rep terakhir sambil menunggu rep berikutnya. Setiap rep beserta kecepatan rata-rata, puncak, dan durasinya masuk ke daftar set; simpan sesi dengan tombol **Selesaikan Set & Simpan**.
   * Jangan mengayun atau memindahkan HP dengan tangan untuk mengukur kecepatan. Ponsel harus dipasang kuat dan searah pada barbel; hasil gerakan tangan bukan pengukuran barbel yang valid.
   * Data bertanda **estimasi belum tervalidasi** sampai diuji pada beberapa HP dan dibandingkan dengan instrumen referensi. Jangan gunakan estimasi untuk keputusan klinis atau resep beban tanpa validasi pelatih.
   * Protokol tes menyimpan gerakan, beban, rentang gerak/tempo, status pemasangan HP, dan frekuensi sampel agar sesi dapat dibandingkan secara konsisten.

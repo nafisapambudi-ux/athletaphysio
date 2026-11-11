@@ -144,8 +144,10 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   const vbtHistory = vbtRecords;
   const [currentVBTSetReps, setCurrentVBTSetReps] = useState<VBTRepData[]>([]);
   const [liveConcentricVelocity, setLiveConcentricVelocity] = useState<number>(0.0);
+  const [vbtRepInProgress, setVbtRepInProgress] = useState(false);
   const [vbtSensorActive, setVbtSensorActive] = useState(false);
   const [vbtCalibrating, setVbtCalibrating] = useState(false);
+  const [vbtCalibrationSampleCount, setVbtCalibrationSampleCount] = useState(0);
   const [vbtReady, setVbtReady] = useState(false);
   const [vbtRecording, setVbtRecording] = useState(false);
   const [vbtSensorError, setVbtSensorError] = useState<string | null>(null);
@@ -154,6 +156,10 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const currentAthlete = athletes.find((a) => a.id === selectedAthleteId) || athletes[0];
+  const lastVBTRep = currentVBTSetReps[currentVBTSetReps.length - 1];
+  const speedometerVelocity = vbtRepInProgress
+    ? liveConcentricVelocity
+    : lastVBTRep?.meanVelocity ?? 0;
   const athleteRef = useRef(currentAthlete);
   const vbtTrendData = vbtHistory
     .filter((session) =>
@@ -261,24 +267,32 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         if (isMotionVector(linearAcceleration)) {
           calibration.linearSamples.push(linearAcceleration);
         }
-        if (calibration.gravitySamples.length < 40) return;
+        const calibrationElapsedMs =
+          calibration.sampleTimestamps.at(-1)! - calibration.sampleTimestamps[0];
+        if (calibration.gravitySamples.length % 10 === 0) {
+          setVbtCalibrationSampleCount(calibration.gravitySamples.length);
+        }
+        if (calibration.gravitySamples.length < 40 || calibrationElapsedMs < 1500) return;
 
         const gravityBaseline = averageVector(calibration.gravitySamples);
         const gravityMagnitude = Math.hypot(gravityBaseline.x, gravityBaseline.y, gravityBaseline.z);
-        const gravityMagnitudeStdDev = Math.sqrt(
+        const gravityVectorDeviation = Math.sqrt(
           calibration.gravitySamples.reduce((sum, sample) => {
-            const sampleMagnitude = Math.hypot(sample.x, sample.y, sample.z);
-            return sum + (sampleMagnitude - gravityMagnitude) ** 2;
+            return sum
+              + (sample.x - gravityBaseline.x) ** 2
+              + (sample.y - gravityBaseline.y) ** 2
+              + (sample.z - gravityBaseline.z) ** 2;
           }, 0) / calibration.gravitySamples.length
         );
-        if (gravityMagnitude < 7 || gravityMagnitude > 12 || gravityMagnitudeStdDev > 1) {
+        if (gravityMagnitude < 7 || gravityMagnitude > 12 || gravityVectorDeviation > 0.8) {
           vbtCalibrationRef.current = null;
           if (vbtCalibrationTimeoutRef.current !== null) {
             window.clearTimeout(vbtCalibrationTimeoutRef.current);
             vbtCalibrationTimeoutRef.current = null;
           }
           setVbtCalibrating(false);
-          setVbtSensorError('Kalibrasi gagal. Tahan HP diam pada barbel lalu coba lagi.');
+          setVbtCalibrationSampleCount(0);
+          setVbtSensorError('Kalibrasi tidak stabil. Tahan HP diam pada posisi awal setidaknya 2 detik lalu ulangi.');
           return;
         }
 
@@ -291,7 +305,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         vbtLinearBaselineRef.current = calibration.linearSamples.length >= 30
           ? averageVector(calibration.linearSamples)
           : null;
-        const calibrationDurationMs = calibration.sampleTimestamps.at(-1)! - calibration.sampleTimestamps[0];
+        const calibrationDurationMs = calibrationElapsedMs;
         const sampleRateHz = calibrationDurationMs > 0
           ? (calibration.sampleTimestamps.length - 1) / (calibrationDurationMs / 1000)
           : 0;
@@ -306,6 +320,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
           vbtCalibrationTimeoutRef.current = null;
         }
         setVbtCalibrating(false);
+        setVbtCalibrationSampleCount(0);
         setVbtReady(true);
         setVbtSensorError(null);
         return;
@@ -372,6 +387,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
         const sampleIntervalMs = event.interval > 0 ? Math.min(event.interval, 100) : 1000 / 60;
         detection.phase = 'lifting';
+        setVbtRepInProgress(true);
         detection.startTimestamp = now - sampleIntervalMs;
         detection.lastTimestamp = now - sampleIntervalMs;
         detection.velocity = 0;
@@ -382,6 +398,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
       const elapsedMs = detection.lastTimestamp === null ? 0 : now - detection.lastTimestamp;
       if (elapsedMs <= 0 || elapsedMs > 150) {
+        setVbtRepInProgress(false);
         vbtRepDetectionRef.current = {
           phase: 'waiting',
           lastTimestamp: now,
@@ -428,6 +445,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       };
 
       if (meanVelocity < 0.05 || peakVelocity < 0.1 || meanVelocity > 5 || peakVelocity > 10) {
+        setVbtRepInProgress(false);
         setLiveConcentricVelocity(0);
         setVbtSensorError('Estimasi gerak tidak masuk batas yang masuk akal. Pastikan HP terpasang kuat dan ulangi setelah kalibrasi.');
         return;
@@ -448,6 +466,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
       vbtRepsRef.current = [...reps, newRep];
       setCurrentVBTSetReps(vbtRepsRef.current);
+      setVbtRepInProgress(false);
       setLiveConcentricVelocity(newRep.meanVelocity);
       setVbtSensorError(vbtSampleRateRef.current > 0 && vbtSampleRateRef.current < 20
         ? 'Frekuensi sensor rendah; hasil kecepatan kemungkinan kurang stabil.'
@@ -670,14 +689,16 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     if (vbtCalibrationTimeoutRef.current !== null) {
       window.clearTimeout(vbtCalibrationTimeoutRef.current);
     }
+    setVbtCalibrationSampleCount(0);
     vbtCalibrationTimeoutRef.current = window.setTimeout(() => {
       const calibrationPending = vbtCalibrationRef.current !== null;
       vbtCalibrationRef.current = null;
       vbtCalibrationTimeoutRef.current = null;
       if (!calibrationPending) return;
       setVbtCalibrating(false);
-      setVbtSensorError('Tidak ada data sensor yang diterima. Periksa izin sensor dan coba lagi.');
-    }, 5000);
+      setVbtCalibrationSampleCount(0);
+      setVbtSensorError('Kalibrasi belum selesai. Pastikan sensor aktif dan tahan HP diam pada posisi awal, lalu coba lagi.');
+    }, 8000);
   };
 
   const stopVBTSensor = () => {
@@ -692,8 +713,10 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     vbtRepDetectionRef.current = null;
     setVbtSensorActive(false);
     setVbtCalibrating(false);
+    setVbtCalibrationSampleCount(0);
     setVbtReady(false);
     setVbtRecording(false);
+    setVbtRepInProgress(false);
     setVbtSampleRateHz(0);
     vbtSampleRateRef.current = 0;
   };
@@ -706,6 +729,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     vbtSampleEventsRef.current = 0;
     setCurrentVBTSetReps([]);
     setLiveConcentricVelocity(0);
+    setVbtRepInProgress(false);
     setVbtSensorError(null);
     setVbtRecording(true);
   };
@@ -715,12 +739,14 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     vbtRepDetectionRef.current = null;
     setCurrentVBTSetReps([]);
     setLiveConcentricVelocity(0);
+    setVbtRepInProgress(false);
     setVbtSensorError(null);
   };
 
   const handleFinishVBTSet = async () => {
     if (!currentAthlete || currentVBTSetReps.length === 0) return;
     setVbtRecording(false);
+    setVbtRepInProgress(false);
 
     const avgVel = +(
       currentVBTSetReps.reduce((acc, curr) => acc + curr.meanVelocity, 0) / currentVBTSetReps.length
@@ -770,6 +796,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
     vbtRepDetectionRef.current = null;
     setCurrentVBTSetReps([]);
     setLiveConcentricVelocity(0);
+    setVbtRepInProgress(false);
     if (saveFailed) {
       setVbtSaveStatus('error');
     } else if (saveDestination === 'local') {
@@ -1415,23 +1442,46 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
               {/* Large Velocity Speedometer Gauge */}
               <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                  {vbtRepInProgress
+                    ? `Rep #${currentVBTSetReps.length + 1} · Live`
+                    : lastVBTRep
+                      ? `Rep #${lastVBTRep.repNumber} · Rata-rata selesai`
+                      : 'Menunggu rep pertama'}
+                </div>
                 <div className="text-4xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {liveConcentricVelocity > 0 ? liveConcentricVelocity.toFixed(2) : '0.00'}{' '}
+                  {speedometerVelocity > 0 ? speedometerVelocity.toFixed(2) : '0.00'}{' '}
                   <span className="text-base font-normal">m/s</span>
                 </div>
 
                 <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                  {liveConcentricVelocity > 0
-                    ? getVBTZone(liveConcentricVelocity).zone
-                    : 'Menunggu Repetisi Pertama...'}
+                  {vbtRecording && !vbtRepInProgress && lastVBTRep
+                    ? 'Menunggu rep berikutnya'
+                    : speedometerVelocity > 0
+                      ? getVBTZone(speedometerVelocity).zone
+                      : 'Menunggu repetisi pertama...'}
                 </div>
 
-                {liveConcentricVelocity > 0 && (
+                {speedometerVelocity > 0 && (
                   <div className="text-[11px] text-slate-500 font-mono">
-                    Zona intensitas indikatif: {getVBTZone(liveConcentricVelocity).intensityPct1RM}
+                    Zona intensitas indikatif: {getVBTZone(speedometerVelocity).intensityPct1RM}
                   </div>
                 )}
               </div>
+
+              {lastVBTRep && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-xs dark:border-emerald-900 dark:bg-emerald-950/30">
+                  <div className="font-bold text-emerald-800 dark:text-emerald-300">
+                    Hasil tercatat di set · Rep #{lastVBTRep.repNumber}
+                  </div>
+                  <div className="mt-1 text-slate-700 dark:text-slate-300">
+                    Rata-rata {lastVBTRep.meanVelocity.toFixed(2)} m/s
+                    {lastVBTRep.peakVelocity !== undefined && ` · Puncak ${lastVBTRep.peakVelocity.toFixed(2)} m/s`}
+                    {lastVBTRep.concentricDurationMs !== undefined
+                      && ` · Waktu ${(lastVBTRep.concentricDurationMs / 1000).toFixed(2)} dtk`}
+                  </div>
+                </div>
+              )}
 
               {/* Rep Trigger Controls */}
               <div className="space-y-2 pt-2">
@@ -1454,9 +1504,16 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                     </p>
                   )}
                   <p className="mt-1">
-                    Pasang HP dengan aman dan searah pada barbel. Jauhkan tangan dari ponsel saat mengangkat.
-                    Estimasi akselerometer bukan pengganti alat ukur laboratorium.
+                    Kalibrasi menetapkan orientasi gravitasi dan titik nol gerak relatif saat HP diam; sensor HP
+                    tidak dapat mengukur ketinggian absolut. Pasang HP dengan aman dan searah pada barbel, jangan
+                    gerakkan dengan tangan. Estimasi akselerometer belum tervalidasi.
                   </p>
+                  {vbtCalibrating && (
+                    <p className="mt-1 font-semibold">
+                      Mengkalibrasi posisi awal: {vbtCalibrationSampleCount} sampel (minimal 40) selama setidaknya
+                      1,5 detik. Tahan HP tetap diam.
+                    </p>
+                  )}
                   {vbtSensorError && <p role="alert" className="mt-1 font-semibold">{vbtSensorError}</p>}
                 </div>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -1472,7 +1529,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                     disabled={!vbtSensorActive || vbtCalibrating || vbtRecording || !vbtMountConfirmed || !vbtAreaClear || vbtLoadKg < 1 || vbtLoadKg > 300}
                     className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
                   >
-                    {vbtCalibrating ? 'Tahan HP Diam...' : '2. Kalibrasi'}
+                    {vbtCalibrating ? 'Tahan HP Diam...' : '2. Kalibrasi Titik Awal'}
                   </button>
                   <button
                     onClick={startVBTRecording}
@@ -1566,17 +1623,22 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
                     return (
                       <div key={rep.repNumber} className="space-y-1 text-xs">
-                        <div className="flex items-center justify-between font-mono">
+                        <div className="flex flex-wrap items-center justify-between gap-2 font-mono">
                           <span className="font-bold text-slate-700 dark:text-slate-300">
                             Rep #{rep.repNumber}
                           </span>
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                             {rep.peakPowerWatts !== undefined && (
                               <span className="text-slate-400 text-[11px]">Daya puncak: {rep.peakPowerWatts}W</span>
                             )}
                             <span className="font-bold text-slate-900 dark:text-white tabular-nums">
-                              {rep.meanVelocity.toFixed(2)} m/s
+                              Rata-rata {rep.meanVelocity.toFixed(2)} m/s
                             </span>
+                            {rep.concentricDurationMs !== undefined && (
+                              <span className="text-slate-500 text-[11px]">
+                                { (rep.concentricDurationMs / 1000).toFixed(2)} dtk
+                              </span>
+                            )}
                             <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
                               isOverCutoff
                                 ? 'bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300'
