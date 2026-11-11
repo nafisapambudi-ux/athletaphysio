@@ -276,6 +276,7 @@ export default function App() {
 
   // Navigation tab state
   const [activeTab, setActiveTab] = useState<string>('home');
+  const [sidebarExpanded, setSidebarExpanded] = useState(true);
 
   // Modal states
   const [quickLogOpen, setQuickLogOpen] = useState(false);
@@ -668,11 +669,11 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
-      
-      {/* Strict Top Bar Contract with Firestore DB & Firebase Auth */}
+    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <Header
         demoMode={demoMode}
+        sidebarExpanded={sidebarExpanded}
+        onToggleSidebar={() => setSidebarExpanded((expanded) => !expanded)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onOpenQuickLog={() => openLogForAthlete()}
@@ -689,8 +690,10 @@ export default function App() {
         onSelectAthleteForAI={(athlete) => setAiAdvisorAthlete(athlete)}
       />
 
-      {/* Main Viewport Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <div className={`flex min-h-screen flex-col pt-16 transition-[margin] duration-200 ${
+        sidebarExpanded ? 'md:ml-60' : 'md:ml-[76px]'
+      }`}>
+      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         {demoMode && activeTab !== 'home' && (
           <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
             Mode demo publik: data hanya tersimpan di browser perangkat ini dan tidak disinkronkan ke cloud.
@@ -871,7 +874,6 @@ export default function App() {
         />
       )}
 
-      {/* Quiet Sports Science Footer (anti-slop §1.B) */}
       <footer className="mt-auto border-t border-slate-200 dark:border-slate-800/80 bg-white dark:bg-slate-900 py-6 text-xs text-slate-500 dark:text-slate-400">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
@@ -917,7 +919,7 @@ export default function App() {
           </div>
         </div>
       </footer>
-
+      </div>
     </div>
   );
 }

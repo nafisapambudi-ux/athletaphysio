@@ -80,11 +80,11 @@ export const InjuryPainTracker: React.FC<InjuryPainTrackerProps> = ({
         </div>
 
         {/* Functional segmented controls */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-lg">
+        <div className="flex w-full min-w-0 flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
+          <div className="flex w-full items-center gap-1 overflow-x-auto rounded-lg bg-slate-100 p-1 dark:bg-slate-800 sm:w-auto">
             <button
               onClick={() => setCurrentView('anterior')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                 currentView === 'anterior'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -94,7 +94,7 @@ export const InjuryPainTracker: React.FC<InjuryPainTrackerProps> = ({
             </button>
             <button
               onClick={() => setCurrentView('posterior')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+              className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors whitespace-nowrap cursor-pointer ${
                 currentView === 'posterior'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
@@ -107,7 +107,7 @@ export const InjuryPainTracker: React.FC<InjuryPainTrackerProps> = ({
           <select
             value={selectedAthleteId}
             onChange={(e) => setSelectedAthleteId(e.target.value)}
-            className="px-3 py-2 text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            className="w-full min-w-0 max-w-full px-3 py-2 text-xs font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 sm:w-auto"
           >
             <option value="all">Semua Atlet ({athletes.length})</option>
             {athletes.map((a) => (

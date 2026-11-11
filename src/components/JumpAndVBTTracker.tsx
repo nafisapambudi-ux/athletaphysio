@@ -1374,7 +1374,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                   disabled={vbtRecording}
                   className="mt-0.5"
                 />
-                <span>HP terpasang kencang pada barbel dan tidak dipegang.</span>
+                <span>HP terpasang kencang pada barbel dan tidak dipegang atau digerakkan dengan tangan.</span>
               </label>
               <label className="flex items-start gap-2">
                 <input
@@ -1395,11 +1395,21 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
             {/* Left: Real-time Velocity Gauge & Rep Trigger (5 cols) */}
             <div className="lg:col-span-5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-4 shadow-xs text-center">
               <div>
+                <div className="mb-1 flex items-center justify-center gap-2">
+                  <span className={`h-1.5 w-1.5 rounded-full ${
+                    vbtRecording ? 'animate-pulse bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'
+                  }`} />
+                  <span className={`text-[9px] font-bold uppercase tracking-[0.16em] ${
+                    vbtRecording ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400'
+                  }`}>
+                    {vbtRecording ? 'Live · estimasi sensor' : 'Monitor velocity'}
+                  </span>
+                </div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Kecepatan Angkatan Konsentrik (Mean Velocity)
+                  Kecepatan Angkatan Konsentrik
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Estimasi langsung dari akselerometer HP yang dipasang kuat pada barbel.
+                  Estimasi sesaat saat barbel bergerak. Rata-rata velocity masuk ke grafik setelah repetisi selesai.
                 </p>
               </div>
 

@@ -324,12 +324,12 @@ export const AnalyticsDashboard: React.FC<AnalyticsDashboardProps> = ({
           </div>
 
           {/* Athlete Selector Dropdown */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-medium">Pilih Atlet:</span>
+          <div className="flex min-w-0 flex-col items-start gap-2 sm:flex-row sm:items-center">
+            <span className="shrink-0 text-xs text-slate-500 font-medium">Pilih Atlet:</span>
             <select
               value={selectedAthleteId}
               onChange={(e) => setSelectedAthleteId(e.target.value)}
-              className="px-3 py-1.5 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none"
+              className="w-full min-w-0 max-w-full px-3 py-1.5 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white focus:outline-none sm:w-auto"
             >
               {filteredAthletes.map((a) => (
                 <option key={a.id} value={a.id}>
