@@ -96,7 +96,9 @@ const averageVector = (vectors: MotionVector[]): MotionVector =>
 const VBT_GAUGE_CENTER_X = 130;
 const VBT_GAUGE_CENTER_Y = 140;
 const VBT_GAUGE_MAX_VELOCITY = 1.5;
-const VBT_REP_SETTLE_MS = 80;
+const VBT_REP_SETTLE_MS = 60;
+const VBT_REP_START_ACCELERATION = 0.7;
+const VBT_REP_FAST_START_ACCELERATION = 2;
 
 const describeVBTGaugeArc = (startVelocity: number, endVelocity: number, radius: number) => {
   const startAngle = Math.PI - (startVelocity / VBT_GAUGE_MAX_VELOCITY) * Math.PI;
@@ -398,10 +400,11 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       }
 
       if (detection.phase === 'waiting') {
-        detection.positiveAccelerationSamples = verticalAcceleration > 0.7
+        detection.positiveAccelerationSamples = verticalAcceleration > VBT_REP_START_ACCELERATION
           ? detection.positiveAccelerationSamples + 1
           : 0;
-        if (detection.positiveAccelerationSamples < 2) {
+        const fastStart = verticalAcceleration > VBT_REP_FAST_START_ACCELERATION;
+        if (detection.positiveAccelerationSamples < 2 && !fastStart) {
           detection.previousAcceleration = verticalAcceleration;
           detection.lastTimestamp = now;
           return;
