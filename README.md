@@ -1,4 +1,4 @@
-# AthletaPhysio - Sistem Pemantauan Kondisi Fisik Atlet Berbasis Sports Science
+# PERFORMIQ - Sistem Pemantauan Kondisi Fisik Atlet Berbasis Sports Science
 
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue.svg)](https://www.typescriptlang.org/)

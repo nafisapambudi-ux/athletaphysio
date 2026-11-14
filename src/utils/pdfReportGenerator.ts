@@ -74,7 +74,7 @@ export function generateAthleteReportPDF({
   doc.rect(margin, y, contentWidth, 24, 'F');
 
   // Accent bar on left
-  doc.setFillColor(16, 185, 129); // emerald-500
+  doc.setFillColor(220, 38, 38);
   doc.rect(margin, y, 3, 24, 'F');
 
   doc.setFont('helvetica', 'bold');
@@ -483,7 +483,7 @@ export function generateAthleteReportPDF({
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184);
     doc.text(
-      'Dokumen resmi AthletaPhysio Sports Science Monitoring System. Informasi bersifat rahasia untuk tim pelatih dan medis.',
+      'Dokumen resmi PERFORMIQ Sports Science Monitoring System. Informasi bersifat rahasia untuk tim pelatih dan medis.',
       margin,
       pageHeight - 6
     );

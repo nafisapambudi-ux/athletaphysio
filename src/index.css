@@ -5,6 +5,11 @@
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   }
+
+  ::selection {
+    background: #dc2626;
+    color: #ffffff;
+  }
   
   .font-mono, [class*="tabular-nums"] {
     font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -21,9 +26,37 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
+  background: rgba(220, 38, 38, 0.38);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  background: rgba(185, 28, 28, 0.7);
+}
+
+button[class~="bg-emerald-600"] {
+  background-color: #dc2626;
+}
+
+button[class~="hover:bg-emerald-700"]:hover {
+  background-color: #b91c1c;
+}
+
+button[class~="active:bg-emerald-800"]:active {
+  background-color: #991b1b;
+}
+
+input[class~="accent-emerald-600"] {
+  accent-color: #dc2626;
+}
+
+button[class~="text-emerald-600"],
+button[class~="text-emerald-700"],
+a[class~="text-emerald-600"],
+a[class~="text-emerald-700"] {
+  color: #dc2626;
+}
+
+button[class~="hover:text-emerald-600"]:hover,
+a[class~="hover:text-emerald-600"]:hover {
+  color: #b91c1c;
 }

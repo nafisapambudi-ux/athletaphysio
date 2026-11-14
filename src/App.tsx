@@ -878,7 +878,7 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="font-semibold text-slate-800 dark:text-slate-200">
-              AthletaPhysio
+              PERFORMIQ
             </span>
             <span aria-hidden="true">·</span>
             <span>Sistem Pemantauan Kondisi Fisik Atlet Berbasis Sports Science</span>
@@ -888,14 +888,14 @@ export default function App() {
             <span className={`inline-flex items-center gap-1 text-[11px] font-mono ${
               demoMode || !currentUser || cloudSyncError
                 ? 'text-slate-500 dark:text-slate-400'
-                : 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400'
             }`}>
               <span className={`w-1.5 h-1.5 rounded-full inline-block ${
                 demoMode || !currentUser || cloudSyncError
                   ? 'bg-slate-400'
                   : isCloudSyncing
                   ? 'bg-amber-500 animate-pulse'
-                  : 'bg-emerald-500'
+                  : 'bg-red-500'
               }`} />
               {demoMode
                 ? 'Data tersimpan di browser'

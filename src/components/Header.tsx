@@ -30,6 +30,8 @@ import { User } from 'firebase/auth';
 import { Athlete } from '../types/athlete';
 import { AthleteRiskAlert } from '../utils/sportsScience';
 
+const performiqLogo = `${import.meta.env.BASE_URL}performiq-logo.png`;
+
 interface HeaderProps {
   demoMode: boolean;
   sidebarExpanded: boolean;
@@ -134,16 +136,21 @@ export const Header: React.FC<HeaderProps> = ({
           className={`flex h-16 shrink-0 items-center gap-3 border-b border-slate-100 px-4 text-left dark:border-slate-800 ${
             sidebarExpanded ? '' : 'justify-center px-2'
           }`}
-          title="AthletaPhysio — Beranda"
+          title="PERFORMIQ — Beranda"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm">
-            <Activity className="h-5 w-5" />
+          <span className={`flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white ${
+            sidebarExpanded ? 'h-12 w-32' : 'h-10 w-10'
+          }`}>
+            <img
+              src={performiqLogo}
+              alt="PERFORMIQ"
+              className={sidebarExpanded
+                ? 'h-auto w-full max-w-none'
+                : 'h-full w-full object-cover object-center'}
+            />
           </span>
           {sidebarExpanded && (
             <span className="min-w-0">
-              <span className="block whitespace-nowrap text-sm font-bold tracking-tight text-slate-900 dark:text-white">
-                AthletaPhysio
-              </span>
               <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
                 {demoMode ? 'Demo publik' : currentUser ? 'Firestore DB' : 'Mode lokal'}
               </span>
@@ -177,14 +184,14 @@ export const Header: React.FC<HeaderProps> = ({
                       aria-current={isActive ? 'page' : undefined}
                       className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-semibold transition-colors ${
                         isActive
-                          ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                          ? 'bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-300'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white'
                       } ${sidebarExpanded ? '' : 'justify-center px-0'}`}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
                       {sidebarExpanded && <span className="truncate">{item.label}</span>}
                       {sidebarExpanded && isActive && (
-                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />
+                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-red-600 dark:bg-red-400" />
                       )}
                     </button>
                   );
@@ -205,7 +212,7 @@ export const Header: React.FC<HeaderProps> = ({
                   {demoMode ? 'Demo — data lokal' : cloudSyncError ? 'Sinkronisasi bermasalah' : isCloudSyncing ? 'Menyinkronkan data' : currentUser ? 'Cloud aktif' : 'Mode lokal'}
                 </p>
                 <p className="truncate text-[9px] text-slate-500 dark:text-slate-400">
-                  {currentUser?.displayName || currentUser?.email || 'AthletaPhysio'}
+                  {currentUser?.displayName || currentUser?.email || 'PERFORMIQ'}
                 </p>
               </div>
             </div>
@@ -279,11 +286,10 @@ export const Header: React.FC<HeaderProps> = ({
               }}
               className="flex items-center gap-3 text-left"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
-                <Activity className="h-5 w-5" />
+              <span className="flex h-12 w-32 items-center justify-center overflow-hidden rounded-lg bg-white">
+                <img src={performiqLogo} alt="PERFORMIQ" className="h-auto w-full max-w-none" />
               </span>
               <span>
-                <span className="block text-sm font-bold text-slate-900 dark:text-white">AthletaPhysio</span>
                 <span className="mt-0.5 block text-[9px] font-bold uppercase tracking-[0.15em] text-slate-400">
                   {demoMode ? 'Demo publik' : currentUser ? 'Firestore DB' : 'Mode lokal'}
                 </span>
@@ -319,13 +325,13 @@ export const Header: React.FC<HeaderProps> = ({
                         aria-current={isActive ? 'page' : undefined}
                         className={`flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition-colors ${
                           isActive
-                            ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300'
+                            ? 'bg-red-50 text-red-800 dark:bg-red-950/50 dark:text-red-300'
                             : 'text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800'
                         }`}
                       >
                         <Icon className="h-4 w-4 shrink-0" />
                         {item.label}
-                        {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-600 dark:bg-emerald-400" />}
+                        {isActive && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-red-600 dark:bg-red-400" />}
                       </button>
                     );
                   })}
@@ -376,7 +382,7 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
           <div className="flex min-w-0 items-center gap-2">
             <span className="truncate text-sm font-bold text-slate-900 dark:text-white sm:text-base">
-              {navItems.find((item) => item.id === activeTab)?.label || 'AthletaPhysio'}
+              {navItems.find((item) => item.id === activeTab)?.label || 'PERFORMIQ'}
             </span>
             <span className="hidden text-xs text-slate-400 md:inline">/</span>
             <span className="hidden truncate text-xs text-slate-500 dark:text-slate-400 md:inline">
@@ -623,7 +629,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={onOpenQuickLog}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg shadow-sm transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 active:bg-red-800 rounded-lg shadow-sm transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Catat Data</span>

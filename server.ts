@@ -164,7 +164,7 @@ async function startServer() {
   }
 
   app.listen(port, '0.0.0.0', () => {
-    console.log(`AthletaPhysio running locally: http://localhost:${port}`);
+    console.log(`PERFORMIQ running locally: http://localhost:${port}`);
     const networkInterfaces = os.networkInterfaces();
     Object.values(networkInterfaces).forEach((addresses) => {
       addresses?.forEach((address) => {

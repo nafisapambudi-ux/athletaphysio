@@ -104,16 +104,16 @@ export const HomePage: React.FC<HomePageProps> = ({
 
       <div className="relative grid min-h-[31rem] items-end gap-10 px-6 py-8 sm:px-10 sm:py-10 lg:min-h-[34rem] lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-center lg:px-14">
         <div className="max-w-3xl">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-200 sm:text-xs">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-red-300/25 bg-red-400/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-red-200 sm:text-xs">
+            <span className="h-1.5 w-1.5 rounded-full bg-red-300" />
             Athlete performance monitoring
           </div>
           <h1 className="max-w-3xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-6xl">
             Pahami kondisi atlet.
-            <span className="mt-1 block text-emerald-300">Rencanakan langkah berikutnya.</span>
+            <span className="mt-1 block text-red-300">Rencanakan langkah berikutnya.</span>
           </h1>
           <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base sm:leading-8">
-            AthletaPhysio membantu pelatih dan fisioterapis mencatat, memantau, dan meninjau
+            PERFORMIQ membantu pelatih dan fisioterapis mencatat, memantau, dan meninjau
             kondisi fisik atlet melalui data latihan, wellness, tes kebugaran, serta keluhan
             tubuh dalam satu dashboard.
           </p>
@@ -121,7 +121,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             <button
               onClick={() => onNavigateTab('dashboard')}
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-emerald-950/20 transition hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-red-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-red-950/30 transition hover:bg-red-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300"
             >
               Buka dashboard
               <ArrowRight className="h-4 w-4" />
@@ -138,20 +138,20 @@ export const HomePage: React.FC<HomePageProps> = ({
             href="#fitur"
             className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-slate-300 transition hover:text-white"
           >
-            Kenali fitur AthletaPhysio
+            Kenali fitur PERFORMIQ
             <ArrowDownRight className="h-3.5 w-3.5" />
           </a>
           <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-300">
             <span className="inline-flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-emerald-300" />
+              <Check className="h-3.5 w-3.5 text-red-300" />
               Beban latihan dan ACWR
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-emerald-300" />
+              <Check className="h-3.5 w-3.5 text-red-300" />
               Wellness dan kesiapan
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Check className="h-3.5 w-3.5 text-emerald-300" />
+              <Check className="h-3.5 w-3.5 text-red-300" />
               Tes dan keluhan fisik
             </span>
           </div>
@@ -161,13 +161,13 @@ export const HomePage: React.FC<HomePageProps> = ({
           <div className="rounded-2xl border border-white/15 bg-slate-900/70 p-5 shadow-2xl shadow-black/20 backdrop-blur-md">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-200">Ruang kerja performa</span>
-              <span className="rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] font-semibold text-emerald-200">
+              <span className="rounded-full bg-red-300/10 px-2 py-1 text-[10px] font-semibold text-red-200">
                 SPORT SCIENCE
               </span>
             </div>
             <div className="mt-5 space-y-3">
               <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-400/15 text-emerald-200">
+                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-400/15 text-red-200">
                   <BarChart3 className="h-4 w-4" />
                 </span>
                 <div>
@@ -207,7 +207,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     <section aria-labelledby="about-title" className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr] lg:items-start lg:gap-16">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-400">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700 dark:text-red-400">
           Tentang platform
         </p>
         <h2 id="about-title" className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
@@ -217,7 +217,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       <div className="space-y-4 text-sm leading-7 text-slate-600 dark:text-slate-300 sm:text-base">
         <p>
           Memantau atlet sering berarti mengumpulkan banyak jenis catatan yang tersebar.
-          AthletaPhysio menyatukan informasi tersebut agar pelatih dan fisioterapis dapat
+          PERFORMIQ menyatukan informasi tersebut agar pelatih dan fisioterapis dapat
           meninjau perkembangan tim dengan alur yang lebih jelas.
         </p>
         <p>
@@ -231,7 +231,7 @@ export const HomePage: React.FC<HomePageProps> = ({
     <section id="fitur" aria-labelledby="features-title" className="scroll-mt-28">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-400">
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700 dark:text-red-400">
             Dalam satu platform
           </p>
           <h2 id="features-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
@@ -247,16 +247,16 @@ export const HomePage: React.FC<HomePageProps> = ({
         {features.map(({ icon: Icon, title, description, tab, label }) => (
           <article
             key={title}
-            className="group flex min-h-56 flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-emerald-800"
+            className="group flex min-h-56 flex-col rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-0.5 hover:border-red-300 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-red-800"
           >
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300">
               <Icon className="h-5 w-5" />
             </span>
             <h3 className="mt-4 text-sm font-bold text-slate-950 dark:text-white">{title}</h3>
             <p className="mt-2 flex-1 text-xs leading-6 text-slate-600 dark:text-slate-400">{description}</p>
             <button
               onClick={() => onNavigateTab(tab)}
-              className="mt-4 inline-flex w-fit items-center gap-1.5 text-xs font-bold text-emerald-800 transition group-hover:gap-2.5 dark:text-emerald-300"
+              className="mt-4 inline-flex w-fit items-center gap-1.5 text-xs font-bold text-red-800 transition group-hover:gap-2.5 dark:text-red-300"
             >
               {label}
               <ArrowRight className="h-3.5 w-3.5" />
@@ -268,7 +268,7 @@ export const HomePage: React.FC<HomePageProps> = ({
 
     <section aria-labelledby="workflow-title" className="rounded-[1.75rem] border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 sm:p-9">
       <div className="max-w-2xl">
-        <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-400">
+        <p className="text-xs font-bold uppercase tracking-[0.16em] text-red-700 dark:text-red-400">
           Alur penggunaan
         </p>
         <h2 id="workflow-title" className="mt-2 text-2xl font-semibold tracking-tight text-slate-950 dark:text-white sm:text-3xl">
@@ -282,7 +282,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <Icon className="h-4 w-4" />
               </span>
-              <span className="font-mono text-xs font-semibold tracking-widest text-emerald-700 dark:text-emerald-400">
+              <span className="font-mono text-xs font-semibold tracking-widest text-red-700 dark:text-red-400">
                 {number}
               </span>
             </div>
@@ -293,22 +293,22 @@ export const HomePage: React.FC<HomePageProps> = ({
       </div>
     </section>
 
-    <section className="flex flex-col gap-6 rounded-[1.75rem] bg-emerald-950 px-6 py-8 text-white sm:px-9 sm:py-9 lg:flex-row lg:items-center lg:justify-between">
+    <section className="flex flex-col gap-6 rounded-[1.75rem] bg-red-950 px-6 py-8 text-white sm:px-9 sm:py-9 lg:flex-row lg:items-center lg:justify-between">
       <div className="max-w-2xl">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-emerald-300">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-red-300">
           <Sparkles className="h-4 w-4" />
           Mulai dari gambaran tim
         </div>
         <h2 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
           Siap meninjau kondisi atlet Anda?
         </h2>
-        <p className="mt-2 text-sm leading-6 text-emerald-100/75">
+        <p className="mt-2 text-sm leading-6 text-red-100/75">
           Buka ringkasan tim untuk melihat kondisi, catatan, dan indikator pemantauan atlet.
         </p>
       </div>
       <button
         onClick={() => onNavigateTab('dashboard')}
-        className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-emerald-950 transition hover:bg-emerald-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+        className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-bold text-red-950 transition hover:bg-red-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
       >
         Buka dashboard
         <ArrowRight className="h-4 w-4" />
