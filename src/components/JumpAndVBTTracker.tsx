@@ -60,8 +60,22 @@ interface VBTRepDetection {
   displacement: number;
   previousAcceleration: number;
   positiveAccelerationSamples: number;
-  lowVelocitySamples: number;
+  lowVelocityStartedAt: number | null;
+  lowVelocityStartDisplacement: number | null;
 }
+
+const createVBTRepDetection = (timestamp: number, acceleration: number): VBTRepDetection => ({
+  phase: 'waiting',
+  lastTimestamp: timestamp,
+  startTimestamp: timestamp,
+  velocity: 0,
+  peakVelocity: 0,
+  displacement: 0,
+  previousAcceleration: acceleration,
+  positiveAccelerationSamples: 0,
+  lowVelocityStartedAt: null,
+  lowVelocityStartDisplacement: null,
+});
 
 const isMotionVector = (
   value: DeviceMotionEventAcceleration | null
@@ -78,6 +92,21 @@ const averageVector = (vectors: MotionVector[]): MotionVector =>
     }),
     { x: 0, y: 0, z: 0 }
   );
+
+const VBT_GAUGE_CENTER_X = 130;
+const VBT_GAUGE_CENTER_Y = 140;
+const VBT_GAUGE_MAX_VELOCITY = 1.5;
+
+const describeVBTGaugeArc = (startVelocity: number, endVelocity: number, radius: number) => {
+  const startAngle = Math.PI - (startVelocity / VBT_GAUGE_MAX_VELOCITY) * Math.PI;
+  const endAngle = Math.PI - (endVelocity / VBT_GAUGE_MAX_VELOCITY) * Math.PI;
+  const startX = VBT_GAUGE_CENTER_X + radius * Math.cos(startAngle);
+  const startY = VBT_GAUGE_CENTER_Y - radius * Math.sin(startAngle);
+  const endX = VBT_GAUGE_CENTER_X + radius * Math.cos(endAngle);
+  const endY = VBT_GAUGE_CENTER_Y - radius * Math.sin(endAngle);
+
+  return `M ${startX} ${startY} A ${radius} ${radius} 0 0 1 ${endX} ${endY}`;
+};
 
 export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   athletes,
@@ -160,6 +189,8 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
   const speedometerVelocity = vbtRepInProgress
     ? liveConcentricVelocity
     : lastVBTRep?.meanVelocity ?? 0;
+  const vbtGaugeRatio = Math.min(1, Math.max(0, speedometerVelocity / VBT_GAUGE_MAX_VELOCITY));
+  const vbtNeedleAngle = 180 - vbtGaugeRatio * 180;
   const athleteRef = useRef(currentAthlete);
   const vbtTrendData = vbtHistory
     .filter((session) =>
@@ -361,17 +392,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       let detection = vbtRepDetectionRef.current;
 
       if (!detection) {
-        detection = {
-          phase: 'waiting',
-          lastTimestamp: now,
-          startTimestamp: now,
-          velocity: 0,
-          peakVelocity: 0,
-          displacement: 0,
-          previousAcceleration: verticalAcceleration,
-          positiveAccelerationSamples: 0,
-          lowVelocitySamples: 0,
-        };
+        detection = createVBTRepDetection(now, verticalAcceleration);
         vbtRepDetectionRef.current = detection;
       }
 
@@ -393,23 +414,14 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         detection.velocity = 0;
         detection.peakVelocity = 0;
         detection.displacement = 0;
-        detection.lowVelocitySamples = 0;
+        detection.lowVelocityStartedAt = null;
+        detection.lowVelocityStartDisplacement = null;
       }
 
       const elapsedMs = detection.lastTimestamp === null ? 0 : now - detection.lastTimestamp;
       if (elapsedMs <= 0 || elapsedMs > 150) {
         setVbtRepInProgress(false);
-        vbtRepDetectionRef.current = {
-          phase: 'waiting',
-          lastTimestamp: now,
-          startTimestamp: now,
-          velocity: 0,
-          peakVelocity: 0,
-          displacement: 0,
-          previousAcceleration: verticalAcceleration,
-          positiveAccelerationSamples: 0,
-          lowVelocitySamples: 0,
-        };
+        vbtRepDetectionRef.current = createVBTRepDetection(now, verticalAcceleration);
         setVbtSensorError('Data sensor terputus sesaat. Rep direset agar hasil tidak dihitung dari sampel yang hilang.');
         return;
       }
@@ -425,24 +437,43 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
       setLiveConcentricVelocity(+detection.velocity.toFixed(2));
 
       const durationMs = now - detection.startTimestamp;
-      detection.lowVelocitySamples = detection.velocity < 0.12 && verticalAcceleration < 0.5
-        ? detection.lowVelocitySamples + 1
-        : 0;
-      if (durationMs < 500 || (detection.lowVelocitySamples < 8 && durationMs < 4000)) return;
+      const isSettled = detection.velocity < 0.12 && verticalAcceleration < 0.5;
+      if (isSettled) {
+        if (detection.lowVelocityStartedAt === null) {
+          detection.lowVelocityStartedAt = now;
+          detection.lowVelocityStartDisplacement = detection.displacement;
+        }
+      } else {
+        detection.lowVelocityStartedAt = null;
+        detection.lowVelocityStartDisplacement = null;
+      }
 
-      const meanVelocity = detection.displacement / (durationMs / 1000);
+      if (durationMs >= 4000 && detection.lowVelocityStartedAt === null) {
+        setVbtRepInProgress(false);
+        vbtRepDetectionRef.current = createVBTRepDetection(now, verticalAcceleration);
+        setLiveConcentricVelocity(0);
+        setVbtSensorError('Gerakan melebihi 4 detik tanpa fase berhenti yang jelas. Rep dibuang; periksa posisi sensor dan ulangi.');
+        return;
+      }
+
+      if (
+        detection.lowVelocityStartedAt === null
+        || now - detection.lowVelocityStartedAt < 200
+      ) return;
+
+      const concentricDurationMs = detection.lowVelocityStartedAt - detection.startTimestamp;
+      if (concentricDurationMs < 500) {
+        setVbtRepInProgress(false);
+        vbtRepDetectionRef.current = createVBTRepDetection(now, verticalAcceleration);
+        setLiveConcentricVelocity(0);
+        setVbtSensorError('Gerakan terlalu singkat untuk estimasi rep yang layak. Ulangi dengan gerakan penuh dan terkontrol.');
+        return;
+      }
+
+      const concentricDisplacement = detection.lowVelocityStartDisplacement ?? detection.displacement;
+      const meanVelocity = concentricDisplacement / (concentricDurationMs / 1000);
       const peakVelocity = detection.peakVelocity;
-      vbtRepDetectionRef.current = {
-        phase: 'waiting',
-        lastTimestamp: now,
-        startTimestamp: now,
-        velocity: 0,
-        peakVelocity: 0,
-        displacement: 0,
-        previousAcceleration: 0,
-        positiveAccelerationSamples: 0,
-        lowVelocitySamples: 0,
-      };
+      vbtRepDetectionRef.current = createVBTRepDetection(now, 0);
 
       if (meanVelocity < 0.05 || peakVelocity < 0.1 || meanVelocity > 5 || peakVelocity > 10) {
         setVbtRepInProgress(false);
@@ -460,7 +491,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         meanVelocity: +meanVelocity.toFixed(2),
         peakVelocity: +peakVelocity.toFixed(2),
         velocityLoss,
-        concentricDurationMs: Math.round(durationMs),
+        concentricDurationMs: Math.round(concentricDurationMs),
         quality: isWarning ? 'Warning' : 'Optimal',
       };
 
@@ -1441,7 +1472,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
               </div>
 
               {/* Large Velocity Speedometer Gauge */}
-              <div className="p-6 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 pb-4 pt-3 dark:border-slate-800 dark:bg-slate-950">
                 <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                   {vbtRepInProgress
                     ? `Rep #${currentVBTSetReps.length + 1} · Live`
@@ -1449,10 +1480,108 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                       ? `Rep #${lastVBTRep.repNumber} · Rata-rata selesai`
                       : 'Menunggu rep pertama'}
                 </div>
-                <div className="text-4xl font-extrabold font-mono text-emerald-600 dark:text-emerald-400 tabular-nums">
-                  {speedometerVelocity > 0 ? speedometerVelocity.toFixed(2) : '0.00'}{' '}
-                  <span className="text-base font-normal">m/s</span>
-                </div>
+                <svg
+                  viewBox="0 0 260 172"
+                  role="img"
+                  aria-label={`Speedometer kecepatan ${speedometerVelocity.toFixed(2)} meter per detik`}
+                  aria-live="polite"
+                  className="mx-auto block w-full max-w-[320px] overflow-visible"
+                >
+                  <path
+                    d={describeVBTGaugeArc(0, VBT_GAUGE_MAX_VELOCITY, 98)}
+                    fill="none"
+                    className="stroke-slate-200 dark:stroke-slate-800"
+                    strokeWidth="15"
+                    strokeLinecap="round"
+                  />
+                  {[
+                    { start: 0, end: 0.5, color: '#f87171' },
+                    { start: 0.5, end: 0.75, color: '#fbbf24' },
+                    { start: 0.75, end: 1, color: '#34d399' },
+                    { start: 1, end: VBT_GAUGE_MAX_VELOCITY, color: '#38bdf8' },
+                  ].map((zone) => (
+                    <path
+                      key={zone.start}
+                      d={describeVBTGaugeArc(zone.start, zone.end, 98)}
+                      fill="none"
+                      stroke={zone.color}
+                      strokeWidth="11"
+                      strokeLinecap="round"
+                      opacity="0.9"
+                    />
+                  ))}
+
+                  {Array.from({ length: 16 }, (_, index) => {
+                    const velocity = (index / 15) * VBT_GAUGE_MAX_VELOCITY;
+                    const angle = Math.PI - (index / 15) * Math.PI;
+                    const majorTick = index % 5 === 0;
+                    const innerRadius = majorTick ? 81 : 87;
+                    const outerRadius = 93;
+                    const x1 = VBT_GAUGE_CENTER_X + innerRadius * Math.cos(angle);
+                    const y1 = VBT_GAUGE_CENTER_Y - innerRadius * Math.sin(angle);
+                    const x2 = VBT_GAUGE_CENTER_X + outerRadius * Math.cos(angle);
+                    const y2 = VBT_GAUGE_CENTER_Y - outerRadius * Math.sin(angle);
+                    const labelX = VBT_GAUGE_CENTER_X + 70 * Math.cos(angle);
+                    const labelY = VBT_GAUGE_CENTER_Y - 70 * Math.sin(angle) + 4;
+
+                    return (
+                      <g key={index}>
+                        <line
+                          x1={x1}
+                          y1={y1}
+                          x2={x2}
+                          y2={y2}
+                          stroke={majorTick ? '#94a3b8' : '#64748b'}
+                          strokeWidth={majorTick ? 2 : 1}
+                        />
+                        {majorTick && (
+                          <text
+                            x={labelX}
+                            y={labelY}
+                            textAnchor="middle"
+                            className="fill-slate-500 font-mono text-[9px] dark:fill-slate-400"
+                          >
+                            {velocity.toFixed(1)}
+                          </text>
+                        )}
+                      </g>
+                    );
+                  })}
+
+                  <g transform={`rotate(${vbtNeedleAngle + 90} ${VBT_GAUGE_CENTER_X} ${VBT_GAUGE_CENTER_Y})`}>
+                    <path
+                      d={`M ${VBT_GAUGE_CENTER_X} ${VBT_GAUGE_CENTER_Y + 7} L ${VBT_GAUGE_CENTER_X - 3} ${VBT_GAUGE_CENTER_Y} L ${VBT_GAUGE_CENTER_X} ${VBT_GAUGE_CENTER_Y - 84} L ${VBT_GAUGE_CENTER_X + 3} ${VBT_GAUGE_CENTER_Y} Z`}
+                      fill="#f8fafc"
+                      stroke="#10b981"
+                      strokeWidth="1.5"
+                    />
+                  </g>
+                  <circle cx={VBT_GAUGE_CENTER_X} cy={VBT_GAUGE_CENTER_Y} r="6" fill="#10b981" />
+                  <circle cx={VBT_GAUGE_CENTER_X} cy={VBT_GAUGE_CENTER_Y} r="2.5" fill="#f8fafc" />
+                  <circle
+                    cx={VBT_GAUGE_CENTER_X}
+                    cy="111"
+                    r="37"
+                    className="fill-white stroke-slate-200 dark:fill-slate-900 dark:stroke-slate-700"
+                    strokeWidth="2"
+                  />
+                  <text
+                    x={VBT_GAUGE_CENTER_X}
+                    y="112"
+                    textAnchor="middle"
+                    className="fill-emerald-600 font-mono text-[27px] font-extrabold dark:fill-emerald-400"
+                  >
+                    {speedometerVelocity.toFixed(2)}
+                  </text>
+                  <text
+                    x={VBT_GAUGE_CENTER_X}
+                    y="129"
+                    textAnchor="middle"
+                    className="fill-slate-500 font-mono text-[10px] dark:fill-slate-400"
+                  >
+                    MEAN VELOCITY · m/s
+                  </text>
+                </svg>
 
                 <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                   {vbtRecording && !vbtRepInProgress && lastVBTRep
@@ -1461,9 +1590,8 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
                       ? getVBTZone(speedometerVelocity).zone
                       : 'Menunggu repetisi pertama...'}
                 </div>
-
                 {speedometerVelocity > 0 && (
-                  <div className="text-[11px] text-slate-500 font-mono">
+                  <div className="mt-1 text-[11px] text-slate-500">
                     Zona intensitas indikatif: {getVBTZone(speedometerVelocity).intensityPct1RM}
                   </div>
                 )}
