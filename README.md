@@ -34,7 +34,7 @@ Halaman **Beranda** memperkenalkan tujuan platform, pengguna yang dituju, fitur 
   * Reactive Strength Index (RSI) untuk Drop Jump.
 * **Velocity-Based Training (VBT)**:
   * Estimasi *Mean Concentric Velocity* (m/s) per repetisi dari akselerometer HP yang terpasang kuat pada barbel. Sebelum set, kalibrasi diam mengambil sampel orientasi gravitasi selama minimal 1,5 detik dan menetapkan titik nol gerak relatif.
-  * Deteksi akhir rep menunggu kecepatan rendah yang stabil selama 200 ms, terlepas dari frekuensi sampel; gerakan yang tidak berhenti dengan jelas dalam 4 detik dibuang dan tidak dimasukkan ke hasil.
+  * Deteksi akhir rep menunggu kecepatan rendah yang stabil selama 80 ms, terlepas dari frekuensi sampel; bunyi konfirmasi sukses tidak menghambat rep berikutnya, sedangkan alarm velocity loss tetap aktif. Gerakan yang tidak berhenti dengan jelas dalam 4 detik dibuang dan tidak dimasukkan ke hasil.
   * Kalibrasi ini bukan pengukuran ketinggian absolut: akselerometer HP tidak dapat menentukan tinggi/posisi absolut saat diam. Gauge menampilkan estimasi sesaat saat rep berlangsung, lalu menahan hasil rata-rata rep terakhir sambil menunggu rep berikutnya. Setiap rep beserta kecepatan rata-rata, puncak, dan durasinya masuk ke daftar set; simpan sesi dengan tombol **Selesaikan Set & Simpan**.
   * Jangan mengayun atau memindahkan HP dengan tangan untuk mengukur kecepatan. Ponsel harus dipasang kuat dan searah pada barbel; hasil gerakan tangan bukan pengukuran barbel yang valid.
   * Data bertanda **estimasi belum tervalidasi** sampai diuji pada beberapa HP dan dibandingkan dengan instrumen referensi. Jangan gunakan estimasi untuk keputusan klinis atau resep beban tanpa validasi pelatih.

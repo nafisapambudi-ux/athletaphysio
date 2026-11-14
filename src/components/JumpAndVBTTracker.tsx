@@ -96,6 +96,7 @@ const averageVector = (vectors: MotionVector[]): MotionVector =>
 const VBT_GAUGE_CENTER_X = 130;
 const VBT_GAUGE_CENTER_Y = 140;
 const VBT_GAUGE_MAX_VELOCITY = 1.5;
+const VBT_REP_SETTLE_MS = 80;
 
 const describeVBTGaugeArc = (startVelocity: number, endVelocity: number, radius: number) => {
   const startAngle = Math.PI - (startVelocity / VBT_GAUGE_MAX_VELOCITY) * Math.PI;
@@ -458,7 +459,7 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
 
       if (
         detection.lowVelocityStartedAt === null
-        || now - detection.lowVelocityStartedAt < 200
+        || now - detection.lowVelocityStartedAt < VBT_REP_SETTLE_MS
       ) return;
 
       const concentricDurationMs = detection.lowVelocityStartedAt - detection.startTimestamp;
@@ -504,7 +505,6 @@ export const JumpAndVBTTracker: React.FC<JumpAndVBTTrackerProps> = ({
         : null);
       if (soundEnabledRef.current) {
         if (isWarning) sportsAudio.playFatigueWarningBuzz();
-        else sportsAudio.playRepSuccessBeep();
       }
     };
 
